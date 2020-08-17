@@ -254,7 +254,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     static int iCloseState = 0; // 0-normal, 1-hover, -1-pushed
     static int iMinimizeState = 0;
-    static HFONT hFntCaption;
+    static HFONT hMainFont;
     LRESULT hit;
     static POINT ptMouseDownPos = {-1, -1};
     static TRACKMOUSEEVENT tme = {sizeof(TRACKMOUSEEVENT), TME_LEAVE, nullptr, 0 };
@@ -263,15 +263,51 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_CREATE:
         if (HDC dc = GetWindowDC(hWnd))
         {
-            //long lfHeight = -MulDiv(10, GetDeviceCaps(dc, LOGPIXELSY), 72);
-            hFntCaption = (HFONT)GetStockObject(ANSI_VAR_FONT); //CreateFont(lfHeight, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, L"Arial");
+/*            HFONT hFont = (HFONT)SendMessage(hWnd, WM_GETFONT, 0, 0L);
+            if (!hFont)
+                hFont = (HFONT)::GetStockObject(SYSTEM_FONT);
+            LOGFONT lf = { 0 };
+            ::GetObject(hFont, sizeof(LOGFONT), &lf);
+            DeleteObject(hFont);
+            lf.lfHeight = -MulDiv(9, GetDeviceCaps(dc, LOGPIXELSY), 72);
+            lstrcpy(lf.lfFaceName, _TEXT("Segoe UI"));
+            lf.lfWeight = FW_NORMAL;
+            hMainFont = CreateFontIndirect(&lf);*/
+
+            hMainFont = CreateFont(-MulDiv(9, GetDeviceCaps(dc, LOGPIXELSY), 72), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, L"Segoe UI");
             ReleaseDC(hWnd, dc);
         }
-        else hFntCaption = nullptr;
+        else hMainFont = nullptr;
         hBmpClose = LoadBitmap(hInst, MAKEINTRESOURCE(IDB_CLOSE));
         hBmpMinimize = LoadBitmap(hInst, MAKEINTRESOURCE(IDB_MINIMIZE));
-        brClient = CreateSolidBrush(RGB(0x80, 0x80, 0x80));
+        brClient = CreateSolidBrush(RGB(0x66, 0x66, 0x66));
         brCaption = CreateSolidBrush(RGB(45, 45, 48));
+        // title button tooltips
+        {
+            HWND hwndTT = CreateWindowEx(WS_EX_TOPMOST, TOOLTIPS_CLASS, NULL,
+                WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
+                CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+                hWnd, NULL, hInst, NULL);
+
+            SetWindowPos(hwndTT, HWND_TOPMOST, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+
+            // Set up "tool" information.
+            // Don't use sizeof(TOOLINFO), because there some problem with Common-Controls and manifest
+            TOOLINFO ti = { TTTOOLINFO_V1_SIZE };
+            ti.uFlags = TTF_SUBCLASS;
+            ti.hwnd = hWnd;
+            ti.hinst = hInst;
+            ti.lpszText = const_cast<LPTSTR>(TEXT("Close"));
+            ti.rect = rcClose;
+            SendMessage(hwndTT, TTM_ADDTOOL, 0, (LPARAM)(LPTOOLINFO)&ti);
+
+            ti.lpszText = const_cast<LPTSTR>(TEXT("Minimize"));
+            ti.rect = rcMinimize;
+            SendMessage(hwndTT, TTM_ADDTOOL, 0, (LPARAM)(LPTOOLINFO)&ti);
+
+
+        }
         mouseHook = SetWindowsHookEx(WH_MOUSE_LL, LowLevelMouseProc, GetModuleHandle(nullptr), 0);
         break;
     // window dragging
@@ -395,7 +431,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             // draw minimize button
             DrawTitleButton(hdc, 1, iMinimizeState);
             // draw caption text
-            HGDIOBJ fntOld = SelectObject(hdc, hFntCaption);
+            HGDIOBJ fntOld = SelectObject(hdc, hMainFont);
             SetTextColor(hdc, RGB(255, 255, 255));
             SetBkMode(hdc, TRANSPARENT);
             TEXTMETRIC tm;
@@ -416,7 +452,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         UnhookWindowsHookEx(mouseHook);
         DeleteObject(hBmpClose);
         DeleteObject(hBmpMinimize);
-        DeleteObject(hFntCaption);
+        DeleteObject(hMainFont);
         DeleteObject(brClient);
         DeleteObject(brCaption);
         PostQuitMessage(0);
@@ -433,8 +469,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             // Clear
             FillRect(dc, &rc, brClient);
             // Draw text
+            HGDIOBJ fntOld = SelectObject(dc, hMainFont);
+            SetTextColor(dc, RGB(255, 255, 255));
             SetBkMode(dc, TRANSPARENT);
             TextOut(dc, 4, btnHeight + 4, szTxt, static_cast<int>(wcslen(szTxt)));
+            SelectObject(dc, fntOld);
             ReleaseDC(hWnd, dc);
         }
         break;
