@@ -42,6 +42,7 @@ THE SOFTWARE.
 
 #include "framework.h"
 #include "ColorPicker.h"
+#include "ScreenPixel.h"
 
 // Sizes
 constexpr LONG wndWidth = 240;
@@ -67,6 +68,8 @@ HBITMAP hBmpMinimize;
 constexpr RECT rcDrag = { 0, brdWidth, wndWidth - btnWidth * 2 - brdWidth - 2, btnHeight };
 constexpr RECT rcMinimize = { wndWidth - btnWidth * 2 - brdWidth - 1, brdWidth, wndWidth - btnWidth - 1, btnHeight };
 constexpr RECT rcClose = { wndWidth - btnWidth - brdWidth, brdWidth, wndWidth - brdWidth, btnHeight };
+
+CScreenPixel g_ScreenPixel;
 
 // Forward declarations of functions included in this code module:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
@@ -263,17 +266,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_CREATE:
         if (HDC dc = GetWindowDC(hWnd))
         {
-/*            HFONT hFont = (HFONT)SendMessage(hWnd, WM_GETFONT, 0, 0L);
-            if (!hFont)
-                hFont = (HFONT)::GetStockObject(SYSTEM_FONT);
-            LOGFONT lf = { 0 };
-            ::GetObject(hFont, sizeof(LOGFONT), &lf);
-            DeleteObject(hFont);
-            lf.lfHeight = -MulDiv(9, GetDeviceCaps(dc, LOGPIXELSY), 72);
-            lstrcpy(lf.lfFaceName, _TEXT("Segoe UI"));
-            lf.lfWeight = FW_NORMAL;
-            hMainFont = CreateFontIndirect(&lf);*/
-
             hMainFont = CreateFont(-MulDiv(9, GetDeviceCaps(dc, LOGPIXELSY), 72), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, L"Segoe UI");
             ReleaseDC(hWnd, dc);
         }
@@ -460,19 +452,19 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_HOOKMOUSEPOS:
         if (HDC dc = GetDC(hWnd))
         {
+            COLORREF cr = g_ScreenPixel.GetPixel(POINT{ (LONG)wParam, (LONG)lParam });
             TCHAR szTxt[MINCHAR] = _TEXT("");
-            wsprintf(szTxt, _TEXT("Pos: x=%li, y=%li\n"), wParam, lParam);
+            wsprintf(szTxt, _TEXT("Pos: x=%li, y=%li\nRed: %li, Green: %li, Blue: %li"), wParam, lParam, GetRValue(cr), GetGValue(cr), GetBValue(cr));
             // Get text height
-            SIZE size;
-            GetTextExtentPoint32(dc, szTxt, lstrlen(szTxt), &size);
-            RECT rc{ 4, btnHeight + 4,  wndWidth - 8, btnHeight + 4 + size.cy };
+            RECT rc{ 4, btnHeight + 4,  wndWidth - 8, btnHeight + 4 };
+            DrawText(dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING | DT_CALCRECT);
             // Clear
             FillRect(dc, &rc, brClient);
             // Draw text
             HGDIOBJ fntOld = SelectObject(dc, hMainFont);
             SetTextColor(dc, RGB(255, 255, 255));
             SetBkMode(dc, TRANSPARENT);
-            TextOut(dc, 4, btnHeight + 4, szTxt, static_cast<int>(wcslen(szTxt)));
+            DrawText(dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING);
             SelectObject(dc, fntOld);
             ReleaseDC(hWnd, dc);
         }
