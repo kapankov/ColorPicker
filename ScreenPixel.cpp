@@ -1,4 +1,5 @@
 #include "ScreenPixel.h"
+#include "lcms2.h"
 
 CScreenPixel::CScreenPixel()
 {
@@ -27,4 +28,22 @@ COLORREF CScreenPixel::GetPixel(const POINT& p)
 	::BitBlt(m_hdcMem, 0, 0, 1, 1, m_hdcScreen, p.x, p.y, SRCCOPY);
 	::GetDIBits(m_hdcMem, m_hBmp, 0, 1, m_bmpBits, &m_bmpi, DIB_RGB_COLORS);
 	return  RGB(m_bmpBits[2], m_bmpBits[1], m_bmpBits[0]);
+}
+
+void CScreenPixel::Rgb2Lab(const COLORREF& cr, double* lab)
+{
+	if (cmsHPROFILE hRgbProfile = cmsCreate_sRGBProfile())
+	{
+		if (cmsHPROFILE hLabProfile = cmsCreateLab4Profile(NULL))
+		{
+			if (cmsHTRANSFORM hTransform = cmsCreateTransform(hRgbProfile, TYPE_RGB_8, hLabProfile, TYPE_Lab_DBL,
+				INTENT_PERCEPTUAL /*INTENT_RELATIVE_COLORIMETRIC*/, 0))
+			{
+				cmsDoTransform(hTransform, &cr, lab, 1);
+				cmsDeleteTransform(hTransform);
+			}
+			cmsCloseProfile(hLabProfile);
+		}
+		cmsCloseProfile(hRgbProfile);
+	}
 }

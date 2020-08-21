@@ -452,9 +452,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_HOOKMOUSEPOS:
         if (HDC dc = GetDC(hWnd))
         {
-            COLORREF cr = g_ScreenPixel.GetPixel(POINT{ (LONG)wParam, (LONG)lParam });
+            double lab[3] = { 0, 0, 0 };
+            COLORREF rgb = g_ScreenPixel.GetPixel(POINT{ (LONG)wParam, (LONG)lParam });
+            g_ScreenPixel.Rgb2Lab(rgb, lab);
             TCHAR szTxt[MINCHAR] = _TEXT("");
-            wsprintf(szTxt, _TEXT("Pos: x=%li, y=%li\nRed: %li, Green: %li, Blue: %li"), wParam, lParam, GetRValue(cr), GetGValue(cr), GetBValue(cr));
+            swprintf(szTxt, MINCHAR, _TEXT("Pos: x=%li, y=%li\nRed: %li, Green: %li, Blue: %li\nL: %f, a: %f, b: %f"), 
+                (LONG)wParam, (LONG)lParam, 
+                GetRValue(rgb), GetGValue(rgb), GetBValue(rgb),
+                lab[0], lab[1], lab[2]);
             // Get text height
             RECT rc{ 4, btnHeight + 4,  wndWidth - 8, btnHeight + 4 };
             DrawText(dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING | DT_CALCRECT);

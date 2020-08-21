@@ -14,4 +14,5 @@ public:
 	CScreenPixel();
 	~CScreenPixel();
 	COLORREF GetPixel(const POINT& p);
+	void Rgb2Lab(const COLORREF& cr, double* lab);
 };
