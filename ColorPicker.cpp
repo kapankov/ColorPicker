@@ -43,6 +43,7 @@ THE SOFTWARE.
 #include "framework.h"
 #include "ColorPicker.h"
 #include "ScreenPixel.h"
+#include "version.h"
 
 // Sizes
 constexpr LONG wndWidth = 240;
@@ -100,6 +101,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
     // Initialize global strings
     LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
+    swprintf(&szTitle[lstrlen(szTitle)], sizeof(szTitle) / sizeof(TCHAR) - lstrlen(szTitle), _TEXT(" ver. %li.%li.%li.%li"), MAJOR_VER, MINOR_VER, RELEASE_VER, BUILD_VER);
     LoadStringW(hInstance, IDC_COLORPICKER, szWindowClass, MAX_LOADSTRING);
     MyRegisterClass(hInstance);
 
@@ -261,6 +263,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     LRESULT hit;
     static POINT ptMouseDownPos = {-1, -1};
     static TRACKMOUSEEVENT tme = {sizeof(TRACKMOUSEEVENT), TME_LEAVE, nullptr, 0 };
+    static const TCHAR clrFormat[] = _TEXT("Pos: x=%li, y=%li\nRed: %li, Green: %li, Blue: %li\nL: %.2f, a: %.2f, b: %.2f\n"
+        "Hue: %.0f,\n"
+        "Saturation: %.2f\n"
+        "Brightness: %.2f\n"
+        "Lightness: %.2f\n"
+        "Luminance: %.2f");
     switch (message)
     {
     case WM_CREATE:
@@ -452,14 +460,19 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_HOOKMOUSEPOS:
         if (HDC dc = GetDC(hWnd))
         {
-            double lab[3] = { 0, 0, 0 };
+            double lab[3] = { };
+            double hsvl[4] = { };
+            double lum = 0;
             COLORREF rgb = g_ScreenPixel.GetPixel(POINT{ (LONG)wParam, (LONG)lParam });
             g_ScreenPixel.Rgb2Lab(rgb, lab);
-            TCHAR szTxt[MINCHAR] = _TEXT("");
-            swprintf(szTxt, MINCHAR, _TEXT("Pos: x=%li, y=%li\nRed: %li, Green: %li, Blue: %li\nL: %f, a: %f, b: %f"), 
+            g_ScreenPixel.GetHsvl(rgb, hsvl);
+            g_ScreenPixel.GetLuminance(rgb, &lum);
+            TCHAR szTxt[512] = _TEXT("");
+            swprintf(szTxt, sizeof(szTxt)/sizeof(TCHAR), clrFormat, 
                 (LONG)wParam, (LONG)lParam, 
                 GetRValue(rgb), GetGValue(rgb), GetBValue(rgb),
-                lab[0], lab[1], lab[2]);
+                lab[0], lab[1], lab[2],
+                hsvl[0], hsvl[1], hsvl[2], hsvl[3], lum);
             // Get text height
             RECT rc{ 4, btnHeight + 4,  wndWidth - 8, btnHeight + 4 };
             DrawText(dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING | DT_CALCRECT);

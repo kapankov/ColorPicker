@@ -161,6 +161,7 @@
     <ClInclude Include="Resource.h" />
     <ClInclude Include="ScreenPixel.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="version.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ColorPicker.cpp" />
