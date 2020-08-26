@@ -33,10 +33,13 @@
     <ClInclude Include="version.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Magnifier.h">
+    <ClInclude Include="XTransparentBlt.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="XTransparentBlt.h">
+    <ClInclude Include="MagnifierWnd.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="MainWnd.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -47,10 +50,13 @@
     <ClCompile Include="ScreenPixel.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Magnifier.cpp">
+    <ClCompile Include="XTransparentBlt.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="XTransparentBlt.cpp">
+    <ClCompile Include="MagnifierWnd.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="MainWnd.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
