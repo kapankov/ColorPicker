@@ -7,10 +7,9 @@ perform some useful actions with these measurements.
 to change the style of the window title and buttons, and working with the 
 nonclient scope is too confusing and unreliable in terms of compatibility with 
 the next versions of Windows, so I completely abandoned it and imitate the 
-ehavior of the title and buttons through drawing in the client area.
+behavior of the title and buttons through drawing in the client area.
 And also, winAPI is used here (no MFC, ATL and other similar libraries and 
 frameworks).
-I used the boilerplate application code, courtesy of Visual Studio.
 \authors Konstantin A. Pankov, explorus@mail.ru
 \copyright MIT License
 \version 1.0
