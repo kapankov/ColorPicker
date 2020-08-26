@@ -43,6 +43,7 @@ THE SOFTWARE.
 #include "framework.h"
 #include "ColorPicker.h"
 #include "ScreenPixel.h"
+#include "Magnifier.h"
 #include "version.h"
 
 // Sizes
@@ -77,6 +78,8 @@ ATOM                MyRegisterClass(HINSTANCE hInstance);
 BOOL                InitInstance(HINSTANCE, int);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
+
+std::unique_ptr<CMagnifier> wndMagnifier;
 
 // Mouse hook
 #define WM_HOOKMOUSEPOS (WM_USER + 0x0001)
@@ -308,6 +311,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 
         }
+        wndMagnifier = std::make_unique<CMagnifier>(hInst, hWnd, RECT{ 8, 8 + btnHeight, 232, 232 });
         mouseHook = SetWindowsHookEx(WH_MOUSE_LL, LowLevelMouseProc, GetModuleHandle(nullptr), 0);
         break;
     // window dragging
@@ -450,6 +454,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         break;
     case WM_DESTROY:
         UnhookWindowsHookEx(mouseHook);
+        wndMagnifier.reset();
         DeleteObject(hBmpClose);
         DeleteObject(hBmpMinimize);
         DeleteObject(hMainFont);
@@ -474,7 +479,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                 lab[0], lab[1], lab[2],
                 hsvl[0], hsvl[1], hsvl[2], hsvl[3], lum);
             // Get text height
-            RECT rc{ 4, btnHeight + 4,  wndWidth - 8, btnHeight + 4 };
+            LONG lTopOfText = wndWidth + btnHeight/* + 8*/;
+            RECT rc{ 4, lTopOfText + 4,  wndWidth - 8, lTopOfText + 4 };
             DrawText(dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING | DT_CALCRECT);
             // Clear
             FillRect(dc, &rc, brClient);

@@ -1,7 +1,10 @@
 #pragma once
 
 #include <windows.h>
+#pragma warning(push)
+#pragma warning(disable:5033)
 #include "lcms2.h"
+#pragma warning(pop)
 
 class CScreenPixel
 {
