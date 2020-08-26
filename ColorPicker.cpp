@@ -42,6 +42,7 @@ THE SOFTWARE.
 
 #include "framework.h"
 #include "ColorPicker.h"
+#include "XTransparentBlt.h"
 #include "ScreenPixel.h"
 #include "Magnifier.h"
 #include "version.h"
@@ -52,6 +53,7 @@ constexpr LONG wndHeight = 600;
 constexpr LONG btnWidth = 24;
 constexpr LONG btnHeight = 24;
 constexpr LONG brdWidth = 1;
+constexpr LONG ctrlMargin = 8;
 
 #define MAX_LOADSTRING 100
 
@@ -71,25 +73,11 @@ constexpr RECT rcDrag = { 0, brdWidth, wndWidth - btnWidth * 2 - brdWidth - 2, b
 constexpr RECT rcMinimize = { wndWidth - btnWidth * 2 - brdWidth - 1, brdWidth, wndWidth - btnWidth - 1, btnHeight };
 constexpr RECT rcClose = { wndWidth - btnWidth - brdWidth, brdWidth, wndWidth - brdWidth, btnHeight };
 
-CScreenPixel g_ScreenPixel;
-
 // Forward declarations of functions included in this code module:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
 BOOL                InitInstance(HINSTANCE, int);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
-
-std::unique_ptr<CMagnifier> wndMagnifier;
-
-// Mouse hook
-#define WM_HOOKMOUSEPOS (WM_USER + 0x0001)
-HHOOK   mouseHook;
-LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam);
-
-// Special version of TransparentBlt
-bool XTransparentBlt(HDC hdcDest, int iDx, int iDy, int iDw, int iDh,
-    HDC hdcSrc, int iSx, int iSy, int iSw, int iSh,
-    UINT clrTransparent);
 
 // Application entry point
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
@@ -248,6 +236,25 @@ void DrawTitleButton(HWND hwnd, int ibtn, int state)
     }
 }
 
+// Mouse hook
+#define WM_HOOKMOUSEPOS (WM_USER + 0x0001)
+
+LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam)
+{
+    switch (wParam) {
+    case WM_MOUSEMOVE:
+        if (LPMSLLHOOKSTRUCT lpMM = reinterpret_cast<LPMSLLHOOKSTRUCT>(lParam))
+        {
+            SendMessage(hWindow, WM_HOOKMOUSEPOS, lpMM->pt.x, lpMM->pt.y);
+            /*            TCHAR szMsg[MINCHAR] = _TEXT("");
+                        wsprintf(szMsg, _TEXT("x=%i, y=%i\n"), lpMM->pt.x, lpMM->pt.y);
+                        OutputDebugString(szMsg);*/
+        }
+        break;
+    }
+    return CallNextHookEx(nullptr, nCode, wParam, lParam);
+}
+
 //
 //  FUNCTION: WndProc(HWND, UINT, WPARAM, LPARAM)
 //
@@ -266,12 +273,51 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     LRESULT hit;
     static POINT ptMouseDownPos = {-1, -1};
     static TRACKMOUSEEVENT tme = {sizeof(TRACKMOUSEEVENT), TME_LEAVE, nullptr, 0 };
-    static const TCHAR clrFormat[] = _TEXT("Pos: x=%li, y=%li\nRed: %li, Green: %li, Blue: %li\nL: %.2f, a: %.2f, b: %.2f\n"
-        "Hue: %.0f,\n"
-        "Saturation: %.2f\n"
-        "Brightness: %.2f\n"
-        "Lightness: %.2f\n"
-        "Luminance: %.2f");
+    static HHOOK mouseHook;
+    static CScreenPixel ScreenPixel;
+    static std::unique_ptr<CMagnifier> wndMagnifier;
+
+    auto UpdateInfo = [](HWND hWnd, POINT&& pt)
+    {
+        constexpr TCHAR clrFormat[] = _TEXT("Pos: x=%li, y=%li\nRed: %li, Green: %li, Blue: %li\nL: %.2f, a: %.2f, b: %.2f\n"
+            "Hue: %.0f,\n"
+            "Saturation: %.2f\n"
+            "Brightness: %.2f\n"
+            "Lightness: %.2f\n"
+            "Luminance: %.2f");
+        if (pt.x == -1 || pt.y == -1)
+            ::GetCursorPos(&pt);
+        if (HDC dc = GetDC(hWnd))
+        {
+            double lab[3] = { };
+            double hsvl[4] = { };
+            double lum = 0;
+            const COLORREF rgb = ScreenPixel.GetPixel(pt);
+            ScreenPixel.Rgb2Lab(rgb, lab);
+            ScreenPixel.GetHsvl(rgb, hsvl);
+            ScreenPixel.GetLuminance(rgb, &lum);
+            TCHAR szTxt[512] = _TEXT("");
+            swprintf(szTxt, sizeof(szTxt) / sizeof(TCHAR), clrFormat,
+                pt.x, pt.y,
+                GetRValue(rgb), GetGValue(rgb), GetBValue(rgb),
+                lab[0], lab[1], lab[2],
+                hsvl[0], hsvl[1], hsvl[2], hsvl[3], lum);
+            // Get text height
+            LONG lTopOfText = wndWidth + btnHeight/* + ctrlMargin*/;
+            RECT rc{ ctrlMargin, lTopOfText,  wndWidth - ctrlMargin * 2, lTopOfText + 1 };
+            DrawText(dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING | DT_CALCRECT);
+            // Clear
+            FillRect(dc, &rc, brClient);
+            // Draw text
+            HGDIOBJ fntOld = SelectObject(dc, hMainFont);
+            SetTextColor(dc, RGB(255, 255, 255));
+            SetBkMode(dc, TRANSPARENT);
+            DrawText(dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING);
+            SelectObject(dc, fntOld);
+            ReleaseDC(hWnd, dc);
+        }
+    };
+
     switch (message)
     {
     case WM_CREATE:
@@ -308,10 +354,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             ti.lpszText = const_cast<LPTSTR>(TEXT("Minimize"));
             ti.rect = rcMinimize;
             SendMessage(hwndTT, TTM_ADDTOOL, 0, (LPARAM)(LPTOOLINFO)&ti);
-
-
         }
-        wndMagnifier = std::make_unique<CMagnifier>(hInst, hWnd, RECT{ 8, 8 + btnHeight, 232, 232 });
+        wndMagnifier = std::make_unique<CMagnifier>(hInst, hWnd, RECT{ ctrlMargin, ctrlMargin + btnHeight, wndWidth - ctrlMargin, btnHeight + wndWidth - ctrlMargin });
+        // Update color info
+        UpdateInfo(hWnd, POINT{-1, -1});
         mouseHook = SetWindowsHookEx(WH_MOUSE_LL, LowLevelMouseProc, GetModuleHandle(nullptr), 0);
         break;
     // window dragging
@@ -448,6 +494,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             InflateRect(&rect, -1, -1);
             rect.top += 24;
             FillRect(hdc, &rect, brClient);
+            // Update color info
+            UpdateInfo(hWnd, POINT{-1, -1});
 
             EndPaint(hWnd, &ps);
         }
@@ -463,35 +511,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         PostQuitMessage(0);
         break;
     case WM_HOOKMOUSEPOS:
-        if (HDC dc = GetDC(hWnd))
-        {
-            double lab[3] = { };
-            double hsvl[4] = { };
-            double lum = 0;
-            COLORREF rgb = g_ScreenPixel.GetPixel(POINT{ (LONG)wParam, (LONG)lParam });
-            g_ScreenPixel.Rgb2Lab(rgb, lab);
-            g_ScreenPixel.GetHsvl(rgb, hsvl);
-            g_ScreenPixel.GetLuminance(rgb, &lum);
-            TCHAR szTxt[512] = _TEXT("");
-            swprintf(szTxt, sizeof(szTxt)/sizeof(TCHAR), clrFormat, 
-                (LONG)wParam, (LONG)lParam, 
-                GetRValue(rgb), GetGValue(rgb), GetBValue(rgb),
-                lab[0], lab[1], lab[2],
-                hsvl[0], hsvl[1], hsvl[2], hsvl[3], lum);
-            // Get text height
-            LONG lTopOfText = wndWidth + btnHeight/* + 8*/;
-            RECT rc{ 4, lTopOfText + 4,  wndWidth - 8, lTopOfText + 4 };
-            DrawText(dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING | DT_CALCRECT);
-            // Clear
-            FillRect(dc, &rc, brClient);
-            // Draw text
-            HGDIOBJ fntOld = SelectObject(dc, hMainFont);
-            SetTextColor(dc, RGB(255, 255, 255));
-            SetBkMode(dc, TRANSPARENT);
-            DrawText(dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING);
-            SelectObject(dc, fntOld);
-            ReleaseDC(hWnd, dc);
-        }
+        UpdateInfo(hWnd, POINT{ (LONG)wParam, (LONG)lParam });
         break;
     default:
         return DefWindowProc(hWnd, message, wParam, lParam);
@@ -517,52 +537,4 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
         break;
     }
     return (INT_PTR)FALSE;
-}
-
-LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam)
-{
-    switch (wParam) {
-    case WM_MOUSEMOVE:
-        if (LPMSLLHOOKSTRUCT lpMM = reinterpret_cast<LPMSLLHOOKSTRUCT>(lParam))
-        {
-            SendMessage(hWindow, WM_HOOKMOUSEPOS, lpMM->pt.x, lpMM->pt.y);
-/*            TCHAR szMsg[MINCHAR] = _TEXT("");
-            wsprintf(szMsg, _TEXT("x=%i, y=%i\n"), lpMM->pt.x, lpMM->pt.y);
-            OutputDebugString(szMsg);*/
-        }
-        break;
-    }
-    return CallNextHookEx(nullptr, nCode, wParam, lParam);
-}
-
-bool XTransparentBlt(HDC hdcDest, int iDx, int iDy, int iDw, int iDh,
-    HDC hdcSrc, int iSx, int iSy, int iSw, int iSh,
-    UINT clrTransparent)
-{
-    RECT rect = { iSx,iSy,iSx + iSw,iSy + iSh };
-    LPtoDP(hdcSrc, (POINT*)&rect, 2);
-    int iMaskWidth = abs(rect.right - rect.left);
-    int iMaskHeight = abs(rect.bottom - rect.top);
-    HDC hdcMemDC = CreateCompatibleDC(hdcSrc);
-    HBITMAP hMask = CreateBitmap(iMaskWidth, iMaskHeight, 1, 1, NULL);
-    HBITMAP hOld = (HBITMAP)SelectObject(hdcMemDC, hMask);
-    COLORREF oldBk = SetBkColor(hdcSrc, clrTransparent);
-    StretchBlt(hdcMemDC, 0, 0, iMaskWidth, iMaskHeight,
-        hdcSrc, iSx, iSy, iSw, iSh, SRCCOPY);
-    SetBkColor(hdcSrc, oldBk);
-    StretchBlt(hdcDest, iDx, iDy, iDw, iDh,
-        hdcSrc, iSx, iSy, iSw, iSh, SRCINVERT);
-
-    COLORREF oldFore = SetTextColor(hdcDest, RGB(0, 0, 0));
-    COLORREF oldBack = SetBkColor(hdcDest, RGB(255, 255, 255));
-    StretchBlt(hdcDest, iDx, iDy, iDw, iDh,
-        hdcMemDC, 0, 0, iMaskWidth, iMaskHeight, SRCAND);
-    SetTextColor(hdcDest, oldFore);
-    SetBkColor(hdcDest, oldBack);
-    StretchBlt(hdcDest, iDx, iDy, iDw, iDh,
-        hdcSrc, iSx, iSy, iSw, iSh, SRCINVERT);
-    SelectObject(hdcMemDC, hOld);
-    DeleteObject(hMask);
-    DeleteDC(hdcMemDC); // DeleteObject
-    return true;
 }

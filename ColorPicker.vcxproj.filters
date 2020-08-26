@@ -36,6 +36,9 @@
     <ClInclude Include="Magnifier.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="XTransparentBlt.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ColorPicker.cpp">
@@ -45,6 +48,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Magnifier.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="XTransparentBlt.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
