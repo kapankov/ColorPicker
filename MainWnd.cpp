@@ -92,14 +92,7 @@ LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
             SelectObject(dc, fntOld);
             ReleaseDC(hWnd, dc);
 
-            for (auto& mi : pMainWnd->m_lstMonitors)
-            {
-                if (PtInRect(&mi.rcMonitor, pt))
-                {
-                    pMainWnd->m_wndMagnifier->UpdateView(pt, mi.dcMonitor, mi.rcMonitor);
-                    break;
-                }
-            }
+            pMainWnd->m_wndMagnifier->UpdateView(pt);
         }
     };
 
@@ -282,6 +275,8 @@ LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
         InflateRect(&rect, -1, -1);
         rect.top += 24;
         FillRect(hdc, &rect, pMainWnd->m_brClient);
+        //TODO: put monitors info (amount, current monitor, current profile
+
         // Update color info
         UpdateInfo(hwnd, POINT{ -1, -1 });
 
@@ -316,48 +311,6 @@ LRESULT CMainWnd::LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam)
         break;
     }
     return CallNextHookEx(nullptr, nCode, wParam, lParam);
-}
-
-BOOL CMainWnd::DisplayMonitorCallback(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData)
-{
-    UNREFERENCED_PARAMETER(hdcMonitor);
-
-    MONITORINFOEX miex = { sizeof(MONITORINFOEX) };
-    if (GetMonitorInfo(hMonitor, &miex))
-    {
-        MONINFO mi;
-        CopyRect(&mi.rcMonitor, lprcMonitor);
-        mi.dcMonitor = CreateDC(NULL, miex.szDevice, NULL, NULL);
-        if (mi.dcMonitor)
-        {
-            mi.szProfile = nullptr;
-            DWORD dwSizeOfProfileName = 0;
-            if (!::GetICMProfile(mi.dcMonitor, &dwSizeOfProfileName, mi.szProfile.get()) && ::GetLastError() == ERROR_INSUFFICIENT_BUFFER && dwSizeOfProfileName)
-            {
-                mi.szProfile = std::make_unique<TCHAR[]>((dwSizeOfProfileName + 1) * sizeof(TCHAR));
-                if (::GetICMProfile(mi.dcMonitor, &dwSizeOfProfileName, mi.szProfile.get()))
-                {
-                    std::unique_ptr<char[]> szProfile = std::make_unique<char[]>(dwSizeOfProfileName + 1);
-#ifdef _UNICODE
-                    WideCharToMultiByte(CP_ACP, 0, mi.szProfile.get(), -1, szProfile.get(), (dwSizeOfProfileName + 1), NULL, NULL);
-#else
-                    lstrcpyA(szProfile, mi.szProfile.get());
-#endif
-                    mi.hTransform = nullptr;
-                    mi.hOutProfile = nullptr;
-                    mi.hInProfile = cmsOpenProfileFromFile(szProfile.get(), "r");
-                    if (mi.hInProfile)
-                    {
-                        mi.hOutProfile = cmsCreate_sRGBProfile();
-                        if (mi.hOutProfile)
-                            mi.hTransform = cmsCreateTransform(mi.hInProfile, TYPE_RGBA_8, mi.hOutProfile, TYPE_RGBA_8, INTENT_PERCEPTUAL, 0);
-                    }
-                }
-            }
-            reinterpret_cast<MONINFOLIST*>(dwData)->emplace_back(std::move(mi));
-        }
-    }
-    return TRUE;
 }
 
 ATOM CMainWnd::InternalRegisterClass(HINSTANCE hInstance)
@@ -434,9 +387,6 @@ void CMainWnd::DrawTitleButton(HWND hwnd, int ibtn, int state)
 
 CMainWnd::CMainWnd(HINSTANCE hInstance)
 {
-    // fill monitors info
-    EnumDisplayMonitors(NULL, NULL, DisplayMonitorCallback, (LPARAM)&m_lstMonitors);
-
     // Initialize strings
     LoadString(hInstance, IDS_APP_TITLE, m_szTitle, MAX_LOADSTRING);
 #ifndef _UNICODE
@@ -460,19 +410,6 @@ CMainWnd::CMainWnd(HINSTANCE hInstance)
 
     if (!m_hWindow)
         throw 0;
-}
-
-CMainWnd::~CMainWnd()
-{
-    for (auto& mi : m_lstMonitors)
-    {
-        if (mi.szProfile.get()) mi.szProfile.reset();
-        DeleteDC(mi.dcMonitor);
-        if (mi.hTransform) cmsDeleteTransform(mi.hTransform);
-        if (mi.hOutProfile) cmsCloseProfile(mi.hOutProfile);
-        if (mi.hInProfile) cmsCloseProfile(mi.hInProfile);
-    }
-    m_lstMonitors.clear();
 }
 
 int CMainWnd::Run(int nCmdShow)

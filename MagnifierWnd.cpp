@@ -28,10 +28,11 @@ LRESULT CMagnifierWnd::WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 
 CMagnifierWnd::CMagnifierWnd(HINSTANCE hInstance, HWND hwndParent, const RECT& rect)
 	: m_hwnd{nullptr},
-    m_pt{ 0, 0 },
-    m_dc{nullptr},
-    m_rc{0, 0, 0, 0}
+    m_ptLast{ 0, 0 }
 {
+    // fill monitors info
+    EnumDisplayMonitors(NULL, NULL, DisplayMonitorCallback, (LPARAM)&m_lstMonitors);
+
     WNDCLASSEXW wcex;
 
     wcex.cbSize = sizeof(WNDCLASSEX);
@@ -59,27 +60,85 @@ CMagnifierWnd::CMagnifierWnd(HINSTANCE hInstance, HWND hwndParent, const RECT& r
 
 CMagnifierWnd::~CMagnifierWnd()
 {
+    for (auto& mi : m_lstMonitors)
+    {
+        if (mi.szProfile.get()) mi.szProfile.reset();
+        DeleteDC(mi.dcMonitor);
+        if (mi.hTransform) cmsDeleteTransform(mi.hTransform);
+        if (mi.hOutProfile) cmsCloseProfile(mi.hOutProfile);
+        if (mi.hInProfile) cmsCloseProfile(mi.hInProfile);
+    }
+    m_lstMonitors.clear();
+
     DestroyWindow(m_hwnd);
 }
 
-void CMagnifierWnd::UpdateView(const POINT& pt, HDC hdcMon, const RECT& rc)
+void CMagnifierWnd::UpdateView(const POINT& pt)
 {
-    m_pt = pt;
-    m_dc = hdcMon;
-    m_rc = rc;
+    m_ptLast = pt;
     UpdateWindow(m_hwnd);
 }
 
 void CMagnifierWnd::OnPaint(HDC dc)
 {
-    if (HBRUSH brClient = CreateSolidBrush(RGB(0xff, 0x00, 0x00)))
-    {
-        // draw caption
-        RECT rect;
-        // draw client
-        GetClientRect(m_hwnd, &rect);
-        FillRect(dc, &rect, brClient);
+    RECT rect;
+    GetClientRect(m_hwnd, &rect);
 
-        DeleteObject(brClient);
+    for (auto& mi : m_lstMonitors)
+    {
+        if (PtInRect(&mi.rcMonitor, m_ptLast))
+        {
+/*            dc = mi.dcMonitor;
+            rc = mi.rcMonitor;*/
+            // Draw screen
+            if (HBRUSH brClient = CreateSolidBrush(RGB(0xff, 0x00, 0x00)))
+            {
+                FillRect(dc, &rect, brClient);
+                DeleteObject(brClient);
+            }
+            break;
+        }
     }
+}
+
+BOOL CMagnifierWnd::DisplayMonitorCallback(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData)
+{
+    UNREFERENCED_PARAMETER(hdcMonitor);
+
+    MONITORINFOEX miex = { sizeof(MONITORINFOEX) };
+    if (GetMonitorInfo(hMonitor, &miex))
+    {
+        MONINFO mi;
+        CopyRect(&mi.rcMonitor, lprcMonitor);
+        mi.dcMonitor = CreateDC(NULL, miex.szDevice, NULL, NULL);
+        if (mi.dcMonitor)
+        {
+            mi.szProfile = nullptr;
+            DWORD dwSizeOfProfileName = 0;
+            if (!::GetICMProfile(mi.dcMonitor, &dwSizeOfProfileName, mi.szProfile.get()) && ::GetLastError() == ERROR_INSUFFICIENT_BUFFER && dwSizeOfProfileName)
+            {
+                mi.szProfile = std::make_unique<TCHAR[]>((dwSizeOfProfileName + 1) * sizeof(TCHAR));
+                if (::GetICMProfile(mi.dcMonitor, &dwSizeOfProfileName, mi.szProfile.get()))
+                {
+                    std::unique_ptr<char[]> szProfile = std::make_unique<char[]>(dwSizeOfProfileName + 1);
+#ifdef _UNICODE
+                    WideCharToMultiByte(CP_ACP, 0, mi.szProfile.get(), -1, szProfile.get(), (dwSizeOfProfileName + 1), NULL, NULL);
+#else
+                    lstrcpyA(szProfile, mi.szProfile.get());
+#endif
+                    mi.hTransform = nullptr;
+                    mi.hOutProfile = nullptr;
+                    mi.hInProfile = cmsOpenProfileFromFile(szProfile.get(), "r");
+                    if (mi.hInProfile)
+                    {
+                        mi.hOutProfile = cmsCreate_sRGBProfile();
+                        if (mi.hOutProfile)
+                            mi.hTransform = cmsCreateTransform(mi.hInProfile, TYPE_RGBA_8, mi.hOutProfile, TYPE_RGBA_8, INTENT_PERCEPTUAL, 0);
+                    }
+                }
+            }
+            reinterpret_cast<MONINFOLIST*>(dwData)->emplace_back(std::move(mi));
+        }
+    }
+    return TRUE;
 }
