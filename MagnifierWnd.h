@@ -38,6 +38,6 @@ public:
 
 	void UpdateView(const POINT& pt);
 
-	void OnPaint(HDC dc);
+	void OnPaint();
 
 };

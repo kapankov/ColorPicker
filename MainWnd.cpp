@@ -2,11 +2,10 @@
 #include "resource.h"
 #include "version.h"
 #include "framework.h"
-#include "ScreenPixel.h"
 #include "XTransparentBlt.h"
 
 constexpr LONG wndWidth = 240;
-constexpr LONG wndHeight = 600;
+constexpr LONG wndHeight = 400;
 constexpr LONG btnWidth = 24;
 constexpr LONG btnHeight = 24;
 constexpr LONG brdWidth = 1;
@@ -44,57 +43,13 @@ LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 {
     static int iCloseState = 0; // 0-normal, 1-hover, -1-pushed
     static int iMinimizeState = 0;
-    static HFONT hMainFont;
+    
     LRESULT hit;
     static POINT ptMouseDownPos = { -1, -1 };
     static TRACKMOUSEEVENT tme = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, nullptr, 0 };
     static HHOOK mouseHook;
-    static CScreenPixel ScreenPixel;
 
     CMainWnd* pMainWnd = reinterpret_cast<CMainWnd*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
-
-    auto UpdateInfo = [&](HWND hWnd, POINT&& pt)
-    {
-        constexpr TCHAR clrFormat[] = _TEXT("Pos: x=%li, y=%li\nRed: %li, Green: %li, Blue: %li\nL: %.2f, a: %.2f, b: %.2f\n"
-            "Hue: %.0f,\n"
-            "Saturation: %.2f\n"
-            "Brightness: %.2f\n"
-            "Lightness: %.2f\n"
-            "Luminance: %.2f");
-        if (pt.x == -1 || pt.y == -1)
-            ::GetCursorPos(&pt);
-        if (HDC dc = GetDC(hWnd))
-        {
-            double lab[3] = { };
-            double hsvl[4] = { };
-            double lum = 0;
-            const COLORREF rgb = ScreenPixel.GetPixel(pt);
-            ScreenPixel.Rgb2Lab(rgb, lab);
-            ScreenPixel.GetHsvl(rgb, hsvl);
-            ScreenPixel.GetLuminance(rgb, &lum);
-            TCHAR szTxt[512] = _TEXT("");
-            swprintf(szTxt, sizeof(szTxt) / sizeof(TCHAR), clrFormat,
-                pt.x, pt.y,
-                GetRValue(rgb), GetGValue(rgb), GetBValue(rgb),
-                lab[0], lab[1], lab[2],
-                hsvl[0], hsvl[1], hsvl[2], hsvl[3], lum);
-            // Get text height
-            LONG lTopOfText = wndWidth + btnHeight/* + ctrlMargin*/;
-            RECT rc{ ctrlMargin, lTopOfText,  wndWidth - ctrlMargin * 2, lTopOfText + 1 };
-            DrawText(dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING | DT_CALCRECT);
-            // Clear
-            FillRect(dc, &rc, pMainWnd->m_brClient);
-            // Draw text
-            HGDIOBJ fntOld = SelectObject(dc, hMainFont);
-            SetTextColor(dc, RGB(255, 255, 255));
-            SetBkMode(dc, TRANSPARENT);
-            DrawText(dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING);
-            SelectObject(dc, fntOld);
-            ReleaseDC(hWnd, dc);
-
-            pMainWnd->m_wndMagnifier->UpdateView(pt);
-        }
-    };
 
     switch (uMsg)
     {
@@ -103,10 +58,9 @@ LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
         SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)pMainWnd);
         if (HDC dc = GetWindowDC(hwnd))
         {
-            hMainFont = CreateFont(-MulDiv(9, GetDeviceCaps(dc, LOGPIXELSY), 72), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, L"Segoe UI");
+            pMainWnd->m_hMainFont = CreateFont(-MulDiv(9, GetDeviceCaps(dc, LOGPIXELSY), 72), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, L"Segoe UI");
             ReleaseDC(hwnd, dc);
         }
-        else hMainFont = nullptr;
         pMainWnd->m_hBmpClose = LoadBitmap(pMainWnd->m_hInst, MAKEINTRESOURCE(IDB_CLOSE));
         pMainWnd->m_hBmpMinimize = LoadBitmap(pMainWnd->m_hInst, MAKEINTRESOURCE(IDB_MINIMIZE));
         pMainWnd->m_brClient = CreateSolidBrush(RGB(0x66, 0x66, 0x66));
@@ -137,7 +91,7 @@ LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
         }
         pMainWnd->m_wndMagnifier = std::make_unique<CMagnifierWnd>(pMainWnd->m_hInst, hwnd, RECT{ ctrlMargin, ctrlMargin + btnHeight, wndWidth - ctrlMargin, btnHeight + wndWidth - ctrlMargin });
         // Update color info
-        UpdateInfo(hwnd, POINT{ -1, -1 });
+        pMainWnd->UpdateInfo(hwnd, POINT{ -1, -1 });
         // hook
         g_hWindow = hwnd;
         mouseHook = SetWindowsHookEx(WH_MOUSE_LL, LowLevelMouseProc, GetModuleHandle(nullptr), 0);
@@ -262,7 +216,7 @@ LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
         // draw minimize button
         pMainWnd->DrawTitleButton(hdc, 1, iMinimizeState);
         // draw caption text
-        HGDIOBJ fntOld = SelectObject(hdc, hMainFont);
+        HGDIOBJ fntOld = SelectObject(hdc, pMainWnd->m_hMainFont);
         SetTextColor(hdc, RGB(255, 255, 255));
         SetBkMode(hdc, TRANSPARENT);
         TEXTMETRIC tm;
@@ -278,7 +232,7 @@ LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
         //TODO: put monitors info (amount, current monitor, current profile
 
         // Update color info
-        UpdateInfo(hwnd, POINT{ -1, -1 });
+        pMainWnd->UpdateInfo(hwnd, POINT{ -1, -1 });
 
         EndPaint(hwnd, &ps);
     }
@@ -288,13 +242,13 @@ LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
         pMainWnd->m_wndMagnifier.reset();
         DeleteObject(pMainWnd->m_hBmpClose);
         DeleteObject(pMainWnd->m_hBmpMinimize);
-        DeleteObject(hMainFont);
+        DeleteObject(pMainWnd->m_hMainFont);
         DeleteObject(pMainWnd->m_brClient);
         DeleteObject(pMainWnd->m_brCaption);
         PostQuitMessage(0);
         break;
     case WM_HOOKMOUSEPOS:
-        UpdateInfo(hwnd, POINT{ (LONG)wParam, (LONG)lParam });
+        pMainWnd->UpdateInfo(hwnd, POINT{ (LONG)wParam, (LONG)lParam });
         break;
     default:
         return DefWindowProc(hwnd, uMsg, wParam, lParam);
@@ -385,7 +339,51 @@ void CMainWnd::DrawTitleButton(HWND hwnd, int ibtn, int state)
     }
 }
 
+void CMainWnd::UpdateInfo(HWND hWnd, POINT&& pt)
+{
+    constexpr TCHAR clrFormat[] = _TEXT("Pos: x=%li, y=%li\nRed: %li, Green: %li, Blue: %li\nL: %.2f, a: %.2f, b: %.2f\n"
+        "Hue: %.0f,\n"
+        "Saturation: %.2f\n"
+        "Brightness: %.2f\n"
+        "Lightness: %.2f\n"
+        "Luminance: %.2f");
+    if (pt.x == -1 || pt.y == -1)
+        ::GetCursorPos(&pt);
+    if (HDC dc = GetDC(hWnd))
+    {
+        double lab[3] = { };
+        double hsvl[4] = { };
+        double lum = 0;
+        const COLORREF rgb = m_ScreenPixel.GetPixel(pt);
+        m_ScreenPixel.Rgb2Lab(rgb, lab);
+        m_ScreenPixel.GetHsvl(rgb, hsvl);
+        m_ScreenPixel.GetLuminance(rgb, &lum);
+        TCHAR szTxt[512] = _TEXT("");
+        swprintf(szTxt, sizeof(szTxt) / sizeof(TCHAR), clrFormat,
+            pt.x, pt.y,
+            GetRValue(rgb), GetGValue(rgb), GetBValue(rgb),
+            lab[0], lab[1], lab[2],
+            hsvl[0], hsvl[1], hsvl[2], hsvl[3], lum);
+        // Get text height
+        LONG lTopOfText = wndWidth + btnHeight/* + ctrlMargin*/;
+        RECT rc{ ctrlMargin, lTopOfText,  wndWidth - ctrlMargin * 2, lTopOfText + 1 };
+        DrawText(dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING | DT_CALCRECT);
+        // Clear
+        FillRect(dc, &rc, m_brClient);
+        // Draw text
+        HGDIOBJ fntOld = SelectObject(dc, m_hMainFont);
+        SetTextColor(dc, RGB(255, 255, 255));
+        SetBkMode(dc, TRANSPARENT);
+        DrawText(dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING);
+        SelectObject(dc, fntOld);
+        ReleaseDC(hWnd, dc);
+
+        m_wndMagnifier->UpdateView(pt);
+    }
+}
+
 CMainWnd::CMainWnd(HINSTANCE hInstance)
+    : m_hMainFont(nullptr)
 {
     // Initialize strings
     LoadString(hInstance, IDS_APP_TITLE, m_szTitle, MAX_LOADSTRING);

@@ -5,7 +5,6 @@ constexpr TCHAR szWndClassName[] = TEXT("MagnifierWnd");
 
 LRESULT CMagnifierWnd::WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-    PAINTSTRUCT ps;
     CMagnifierWnd* pWnd = reinterpret_cast<CMagnifierWnd*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
     switch (uMsg)
     {
@@ -14,11 +13,7 @@ LRESULT CMagnifierWnd::WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
         SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)pWnd);
         break;
     case WM_PAINT:
-        if (HDC hdc = BeginPaint(hwnd, &ps))
-        {
-            pWnd->OnPaint(hdc);
-            EndPaint(hwnd, &ps);
-        }
+        pWnd->OnPaint();
         break;
     default:
         return DefWindowProc(hwnd, uMsg, wParam, lParam);
@@ -76,10 +71,10 @@ CMagnifierWnd::~CMagnifierWnd()
 void CMagnifierWnd::UpdateView(const POINT& pt)
 {
     m_ptLast = pt;
-    UpdateWindow(m_hwnd);
+    RedrawWindow(m_hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
 }
 
-void CMagnifierWnd::OnPaint(HDC dc)
+void CMagnifierWnd::OnPaint()
 {
     RECT rect;
     GetClientRect(m_hwnd, &rect);
@@ -88,13 +83,37 @@ void CMagnifierWnd::OnPaint(HDC dc)
     {
         if (PtInRect(&mi.rcMonitor, m_ptLast))
         {
-/*            dc = mi.dcMonitor;
-            rc = mi.rcMonitor;*/
-            // Draw screen
-            if (HBRUSH brClient = CreateSolidBrush(RGB(0xff, 0x00, 0x00)))
+            int w = rect.right - rect.left;
+            int h = rect.bottom - rect.top;
+            const int zoom = 4;
+            if (HBITMAP hbmpScr = ::CreateCompatibleBitmap(mi.dcMonitor, w, h))
             {
-                FillRect(dc, &rect, brClient);
-                DeleteObject(brClient);
+                if (HDC hdcMem = ::CreateCompatibleDC(mi.dcMonitor))
+                {
+                    ::SetStretchBltMode(hdcMem, COLORONCOLOR);
+                    if (HGDIOBJ objOld = ::SelectObject(hdcMem, hbmpScr))
+                    {
+                        // позиционировать курсор по центру
+                        int x = m_ptLast.x - mi.rcMonitor.left - w / (zoom<<1);
+                        int y = m_ptLast.y - mi.rcMonitor.top - h / (zoom<<1);
+                        if (x < 0) x = 0;
+                        if (y < 0) y = 0;
+                        if (x + w / zoom > (mi.rcMonitor.right - mi.rcMonitor.left)) x = (mi.rcMonitor.right - mi.rcMonitor.left) - w / zoom;
+                        if (y + h / zoom > (mi.rcMonitor.bottom - mi.rcMonitor.top)) y = (mi.rcMonitor.bottom - mi.rcMonitor.top) - h / zoom;
+                        ::StretchBlt(hdcMem, 0, 0, w, h, mi.dcMonitor, x, y, w/zoom, h/zoom, SRCCOPY);
+                        //TODO: draw sample
+
+                        // draw result
+                        if (HDC hdc = GetDC(m_hwnd))
+                        {
+                            BitBlt(hdc, 0, 0, w, h, hdcMem, 0, 0, SRCCOPY);
+                            ReleaseDC(m_hwnd, hdc);
+                        }
+                        ::SelectObject(hdcMem, objOld);
+                    }
+                    ::DeleteDC(hdcMem);
+                }
+                ::DeleteObject(hbmpScr);
             }
             break;
         }

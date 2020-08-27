@@ -1,6 +1,7 @@
 #pragma once
 
 #include <windows.h>
+#include "ScreenPixel.h"
 #include "MagnifierWnd.h"
 
 #define MAX_LOADSTRING 100
@@ -17,6 +18,11 @@ class CMainWnd
 	// Caption buttons bitmap
 	HBITMAP m_hBmpClose;
 	HBITMAP m_hBmpMinimize;
+	// Font
+	HFONT m_hMainFont;
+
+	CScreenPixel m_ScreenPixel;
+
 
 	std::unique_ptr<CMagnifierWnd> m_wndMagnifier;
 
@@ -27,6 +33,8 @@ class CMainWnd
 
 	void DrawTitleButton(HDC dc, int ibtn, int state);
 	void DrawTitleButton(HWND hwnd, int ibtn, int state);
+
+	void UpdateInfo(HWND hWnd, POINT&& pt);
 public:
 	CMainWnd(HINSTANCE hInstance);
 
