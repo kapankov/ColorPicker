@@ -10,6 +10,7 @@ LRESULT CMagnifierWnd::WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
     {
     case WM_CREATE:
         pWnd = reinterpret_cast<CMagnifierWnd*>(reinterpret_cast<LPCREATESTRUCT>(lParam)->lpCreateParams);
+        pWnd->m_hdc = GetDC(hwnd);
         SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)pWnd);
         break;
     case WM_PAINT:
@@ -22,11 +23,14 @@ LRESULT CMagnifierWnd::WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 }
 
 CMagnifierWnd::CMagnifierWnd(HINSTANCE hInstance, HWND hwndParent, const RECT& rect)
-	: m_hwnd{nullptr},
+	: 
+    m_Rect(rect),
+    m_hwnd{nullptr},
+    m_hdc(nullptr),
     m_ptLast{ 0, 0 }
 {
     // fill monitors info
-    EnumDisplayMonitors(NULL, NULL, DisplayMonitorCallback, (LPARAM)&m_lstMonitors);
+    EnumDisplayMonitors(NULL, NULL, DisplayMonitorCallback, (LPARAM)this);
 
     WNDCLASSEXW wcex;
 
@@ -58,14 +62,21 @@ CMagnifierWnd::~CMagnifierWnd()
     for (auto& mi : m_lstMonitors)
     {
         if (mi.szProfile.get()) mi.szProfile.reset();
-        DeleteDC(mi.dcMonitor);
+        if (mi.dcMem)
+        {
+            if (mi.objOld)
+                ::SelectObject(mi.dcMem, mi.objOld);
+            ::DeleteObject(mi.hbmpScr);
+            ::DeleteDC(mi.dcMem);
+        }
+        ::DeleteDC(mi.dcMonitor);
         if (mi.hTransform) cmsDeleteTransform(mi.hTransform);
         if (mi.hOutProfile) cmsCloseProfile(mi.hOutProfile);
         if (mi.hInProfile) cmsCloseProfile(mi.hInProfile);
     }
     m_lstMonitors.clear();
-
-    DestroyWindow(m_hwnd);
+    if (m_hdc) ReleaseDC(m_hwnd, m_hdc);
+    ::DestroyWindow(m_hwnd);
 }
 
 void CMagnifierWnd::UpdateView(const POINT& pt)
@@ -76,45 +87,28 @@ void CMagnifierWnd::UpdateView(const POINT& pt)
 
 void CMagnifierWnd::OnPaint()
 {
-    RECT rect;
-    GetClientRect(m_hwnd, &rect);
-
     for (auto& mi : m_lstMonitors)
     {
         if (PtInRect(&mi.rcMonitor, m_ptLast))
         {
-            int w = rect.right - rect.left;
-            int h = rect.bottom - rect.top;
+            int w = m_Rect.right - m_Rect.left;
+            int h = m_Rect.bottom - m_Rect.top;
             const int zoom = 4;
-            if (HBITMAP hbmpScr = ::CreateCompatibleBitmap(mi.dcMonitor, w, h))
-            {
-                if (HDC hdcMem = ::CreateCompatibleDC(mi.dcMonitor))
-                {
-                    ::SetStretchBltMode(hdcMem, COLORONCOLOR);
-                    if (HGDIOBJ objOld = ::SelectObject(hdcMem, hbmpScr))
-                    {
-                        // позиционировать курсор по центру
-                        int x = m_ptLast.x - mi.rcMonitor.left - w / (zoom<<1);
-                        int y = m_ptLast.y - mi.rcMonitor.top - h / (zoom<<1);
-                        if (x < 0) x = 0;
-                        if (y < 0) y = 0;
-                        if (x + w / zoom > (mi.rcMonitor.right - mi.rcMonitor.left)) x = (mi.rcMonitor.right - mi.rcMonitor.left) - w / zoom;
-                        if (y + h / zoom > (mi.rcMonitor.bottom - mi.rcMonitor.top)) y = (mi.rcMonitor.bottom - mi.rcMonitor.top) - h / zoom;
-                        ::StretchBlt(hdcMem, 0, 0, w, h, mi.dcMonitor, x, y, w/zoom, h/zoom, SRCCOPY);
-                        //TODO: draw sample
 
-                        // draw result
-                        if (HDC hdc = GetDC(m_hwnd))
-                        {
-                            BitBlt(hdc, 0, 0, w, h, hdcMem, 0, 0, SRCCOPY);
-                            ReleaseDC(m_hwnd, hdc);
-                        }
-                        ::SelectObject(hdcMem, objOld);
-                    }
-                    ::DeleteDC(hdcMem);
-                }
-                ::DeleteObject(hbmpScr);
-            }
+            // позиционировать курсор по центру
+            int x = m_ptLast.x - mi.rcMonitor.left - w / (zoom<<1);
+            int y = m_ptLast.y - mi.rcMonitor.top - h / (zoom<<1);
+            if (x < 0) x = 0;
+            if (y < 0) y = 0;
+            if (x + w / zoom > (mi.rcMonitor.right - mi.rcMonitor.left)) x = (mi.rcMonitor.right - mi.rcMonitor.left) - w / zoom;
+            if (y + h / zoom > (mi.rcMonitor.bottom - mi.rcMonitor.top)) y = (mi.rcMonitor.bottom - mi.rcMonitor.top) - h / zoom;
+            ::StretchBlt(mi.dcMem, 0, 0, w, h, mi.dcMonitor, x, y, w/zoom, h/zoom, SRCCOPY);
+            //TODO: draw sample
+
+            // draw result
+            if (m_hdc)
+                BitBlt(m_hdc, 0, 0, w, h, mi.dcMem, 0, 0, SRCCOPY);
+                    
             break;
         }
     }
@@ -124,6 +118,7 @@ BOOL CMagnifierWnd::DisplayMonitorCallback(HMONITOR hMonitor, HDC hdcMonitor, LP
 {
     UNREFERENCED_PARAMETER(hdcMonitor);
 
+    CMagnifierWnd* pWnd = reinterpret_cast<CMagnifierWnd*>(dwData);
     MONITORINFOEX miex = { sizeof(MONITORINFOEX) };
     if (GetMonitorInfo(hMonitor, &miex))
     {
@@ -132,6 +127,15 @@ BOOL CMagnifierWnd::DisplayMonitorCallback(HMONITOR hMonitor, HDC hdcMonitor, LP
         mi.dcMonitor = CreateDC(NULL, miex.szDevice, NULL, NULL);
         if (mi.dcMonitor)
         {
+            mi.dcMem = ::CreateCompatibleDC(mi.dcMonitor);
+            if (mi.dcMem)
+                ::SetStretchBltMode(mi.dcMem, COLORONCOLOR);
+            mi.hbmpScr = ::CreateCompatibleBitmap(mi.dcMonitor, pWnd->m_Rect.right - pWnd->m_Rect.left, pWnd->m_Rect.bottom - pWnd->m_Rect.top);
+            if (mi.hbmpScr)
+                mi.objOld = ::SelectObject(mi.dcMem, mi.hbmpScr);
+            else mi.objOld = nullptr;
+
+
             mi.szProfile = nullptr;
             DWORD dwSizeOfProfileName = 0;
             if (!::GetICMProfile(mi.dcMonitor, &dwSizeOfProfileName, mi.szProfile.get()) && ::GetLastError() == ERROR_INSUFFICIENT_BUFFER && dwSizeOfProfileName)
@@ -156,7 +160,7 @@ BOOL CMagnifierWnd::DisplayMonitorCallback(HMONITOR hMonitor, HDC hdcMonitor, LP
                     }
                 }
             }
-            reinterpret_cast<MONINFOLIST*>(dwData)->emplace_back(std::move(mi));
+            pWnd->m_lstMonitors.emplace_back(std::move(mi));
         }
     }
     return TRUE;

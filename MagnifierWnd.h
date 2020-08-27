@@ -18,17 +18,23 @@ typedef struct _MONINFO
 	cmsHPROFILE hInProfile;
 	cmsHPROFILE hOutProfile;
 	cmsHTRANSFORM hTransform;
+	// for OnPaint optimization
+	HDC dcMem;
+	HBITMAP hbmpScr;
+	HGDIOBJ objOld;
 } MONINFO, * LPMONINFO;
 
 typedef std::vector<MONINFO> MONINFOLIST;
 
 class CMagnifierWnd
 {
+	RECT m_Rect;
 	POINT m_ptLast;
 
 	MONINFOLIST m_lstMonitors;
 
 	HWND m_hwnd;
+	HDC m_hdc;
 	static LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 	static BOOL CALLBACK DisplayMonitorCallback(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM  dwData);
 
