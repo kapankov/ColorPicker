@@ -3,7 +3,6 @@
 #include "version.h"
 #include "framework.h"
 #include "ScreenPixel.h"
-#include "MagnifierWnd.h"
 #include "XTransparentBlt.h"
 
 constexpr LONG wndWidth = 240;
@@ -43,7 +42,6 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 
 LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-    static CMainWnd* pMainWnd;
     static int iCloseState = 0; // 0-normal, 1-hover, -1-pushed
     static int iMinimizeState = 0;
     static HFONT hMainFont;
@@ -52,7 +50,8 @@ LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
     static TRACKMOUSEEVENT tme = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, nullptr, 0 };
     static HHOOK mouseHook;
     static CScreenPixel ScreenPixel;
-    static std::unique_ptr<CMagnifier> wndMagnifier;
+
+    CMainWnd* pMainWnd = reinterpret_cast<CMainWnd*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
 
     auto UpdateInfo = [&](HWND hWnd, POINT&& pt)
     {
@@ -92,6 +91,15 @@ LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
             DrawText(dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING);
             SelectObject(dc, fntOld);
             ReleaseDC(hWnd, dc);
+
+            for (auto& mi : pMainWnd->m_lstMonitors)
+            {
+                if (PtInRect(&mi.rcMonitor, pt))
+                {
+                    pMainWnd->m_wndMagnifier->UpdateView(pt, mi.dcMonitor, mi.rcMonitor);
+                    break;
+                }
+            }
         }
     };
 
@@ -99,6 +107,7 @@ LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
     {
     case WM_CREATE:
         pMainWnd = reinterpret_cast<CMainWnd*>(reinterpret_cast<LPCREATESTRUCT>(lParam)->lpCreateParams);
+        SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)pMainWnd);
         if (HDC dc = GetWindowDC(hwnd))
         {
             hMainFont = CreateFont(-MulDiv(9, GetDeviceCaps(dc, LOGPIXELSY), 72), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, L"Segoe UI");
@@ -133,7 +142,7 @@ LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
             ti.rect = rcMinimize;
             SendMessage(hwndTT, TTM_ADDTOOL, 0, (LPARAM)(LPTOOLINFO)&ti);
         }
-        wndMagnifier = std::make_unique<CMagnifier>(pMainWnd->m_hInst, hwnd, RECT{ ctrlMargin, ctrlMargin + btnHeight, wndWidth - ctrlMargin, btnHeight + wndWidth - ctrlMargin });
+        pMainWnd->m_wndMagnifier = std::make_unique<CMagnifierWnd>(pMainWnd->m_hInst, hwnd, RECT{ ctrlMargin, ctrlMargin + btnHeight, wndWidth - ctrlMargin, btnHeight + wndWidth - ctrlMargin });
         // Update color info
         UpdateInfo(hwnd, POINT{ -1, -1 });
         // hook
@@ -281,7 +290,7 @@ LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
     break;
     case WM_DESTROY:
         UnhookWindowsHookEx(mouseHook);
-        wndMagnifier.reset();
+        pMainWnd->m_wndMagnifier.reset();
         DeleteObject(pMainWnd->m_hBmpClose);
         DeleteObject(pMainWnd->m_hBmpMinimize);
         DeleteObject(hMainFont);
@@ -307,6 +316,48 @@ LRESULT CMainWnd::LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam)
         break;
     }
     return CallNextHookEx(nullptr, nCode, wParam, lParam);
+}
+
+BOOL CMainWnd::DisplayMonitorCallback(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData)
+{
+    UNREFERENCED_PARAMETER(hdcMonitor);
+
+    MONITORINFOEX miex = { sizeof(MONITORINFOEX) };
+    if (GetMonitorInfo(hMonitor, &miex))
+    {
+        MONINFO mi;
+        CopyRect(&mi.rcMonitor, lprcMonitor);
+        mi.dcMonitor = CreateDC(NULL, miex.szDevice, NULL, NULL);
+        if (mi.dcMonitor)
+        {
+            mi.szProfile = nullptr;
+            DWORD dwSizeOfProfileName = 0;
+            if (!::GetICMProfile(mi.dcMonitor, &dwSizeOfProfileName, mi.szProfile.get()) && ::GetLastError() == ERROR_INSUFFICIENT_BUFFER && dwSizeOfProfileName)
+            {
+                mi.szProfile = std::make_unique<TCHAR[]>((dwSizeOfProfileName + 1) * sizeof(TCHAR));
+                if (::GetICMProfile(mi.dcMonitor, &dwSizeOfProfileName, mi.szProfile.get()))
+                {
+                    std::unique_ptr<char[]> szProfile = std::make_unique<char[]>(dwSizeOfProfileName + 1);
+#ifdef _UNICODE
+                    WideCharToMultiByte(CP_ACP, 0, mi.szProfile.get(), -1, szProfile.get(), (dwSizeOfProfileName + 1), NULL, NULL);
+#else
+                    lstrcpyA(szProfile, mi.szProfile.get());
+#endif
+                    mi.hTransform = nullptr;
+                    mi.hOutProfile = nullptr;
+                    mi.hInProfile = cmsOpenProfileFromFile(szProfile.get(), "r");
+                    if (mi.hInProfile)
+                    {
+                        mi.hOutProfile = cmsCreate_sRGBProfile();
+                        if (mi.hOutProfile)
+                            mi.hTransform = cmsCreateTransform(mi.hInProfile, TYPE_RGBA_8, mi.hOutProfile, TYPE_RGBA_8, INTENT_PERCEPTUAL, 0);
+                    }
+                }
+            }
+            reinterpret_cast<MONINFOLIST*>(dwData)->emplace_back(std::move(mi));
+        }
+    }
+    return TRUE;
 }
 
 ATOM CMainWnd::InternalRegisterClass(HINSTANCE hInstance)
@@ -383,6 +434,9 @@ void CMainWnd::DrawTitleButton(HWND hwnd, int ibtn, int state)
 
 CMainWnd::CMainWnd(HINSTANCE hInstance)
 {
+    // fill monitors info
+    EnumDisplayMonitors(NULL, NULL, DisplayMonitorCallback, (LPARAM)&m_lstMonitors);
+
     // Initialize strings
     LoadString(hInstance, IDS_APP_TITLE, m_szTitle, MAX_LOADSTRING);
 #ifndef _UNICODE
@@ -406,6 +460,19 @@ CMainWnd::CMainWnd(HINSTANCE hInstance)
 
     if (!m_hWindow)
         throw 0;
+}
+
+CMainWnd::~CMainWnd()
+{
+    for (auto& mi : m_lstMonitors)
+    {
+        if (mi.szProfile.get()) mi.szProfile.reset();
+        DeleteDC(mi.dcMonitor);
+        if (mi.hTransform) cmsDeleteTransform(mi.hTransform);
+        if (mi.hOutProfile) cmsCloseProfile(mi.hOutProfile);
+        if (mi.hInProfile) cmsCloseProfile(mi.hInProfile);
+    }
+    m_lstMonitors.clear();
 }
 
 int CMainWnd::Run(int nCmdShow)
