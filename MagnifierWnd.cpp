@@ -125,8 +125,8 @@ void CMagnifierWnd::OnPaint()
             };
             if (rcSample.left > 0) rcSample.left--;
             if (rcSample.top > 0) rcSample.top--;
-            if (rcSample.right < m_Rect.right) rcSample.right++;
-            if (rcSample.bottom < m_Rect.bottom) rcSample.bottom++;
+            if (rcSample.right < w) rcSample.right++;
+            if (rcSample.bottom < h) rcSample.bottom++;
 
             Rectangle(mi.dcMem, rcSample.left, rcSample.top, rcSample.right, rcSample.bottom);
 
