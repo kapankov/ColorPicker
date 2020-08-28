@@ -44,10 +44,9 @@ LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
     static int iCloseState = 0; // 0-normal, 1-hover, -1-pushed
     static int iMinimizeState = 0;
     
-    LRESULT hit;
     static POINT ptMouseDownPos = { -1, -1 };
     static TRACKMOUSEEVENT tme = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, nullptr, 0 };
-    static HHOOK mouseHook;
+    static HHOOK mouseHook = nullptr;
 
     CMainWnd* pMainWnd = reinterpret_cast<CMainWnd*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
 
@@ -96,29 +95,14 @@ LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
         g_hWindow = hwnd;
         mouseHook = SetWindowsHookEx(WH_MOUSE_LL, LowLevelMouseProc, GetModuleHandle(nullptr), 0);
         break;
-        // window dragging
-    case WM_NCHITTEST:
-        hit = DefWindowProc(hwnd, uMsg, wParam, lParam);
-        if (hit == HTCLIENT)
-        {
-            POINT ptPos{ LOWORD(lParam), HIWORD(lParam) };
-            ScreenToClient(hwnd, &ptPos);
-            if (PtInRect(&rcDrag, ptPos)) hit = HTCAPTION;
-        }
-        return hit;
     case WM_LBUTTONDOWN:
         ptMouseDownPos.x = LOWORD(lParam);
         ptMouseDownPos.y = HIWORD(lParam);
         if (PtInRect(&rcClose, ptMouseDownPos))
-        {
             pMainWnd->DrawTitleButton(hwnd, 0, iCloseState = -1);
-            SetCapture(hwnd);
-        }
         else if (PtInRect(&rcMinimize, ptMouseDownPos))
-        {
             pMainWnd->DrawTitleButton(hwnd, 1, iMinimizeState = -1);
-            SetCapture(hwnd);
-        }
+        SetCapture(hwnd);
         break;
     case WM_LBUTTONUP:
         ReleaseCapture();
@@ -133,7 +117,6 @@ LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
                 // иначе, отпустим кнопку close
                 pMainWnd->DrawTitleButton(hwnd, 0, iCloseState = 0);
             }
-
         }
         // если mouse down был на кнопке minimize
         else if (PtInRect(&rcMinimize, ptMouseDownPos))
@@ -178,6 +161,13 @@ LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
                 if (iMinimizeState != 0)
                     pMainWnd->DrawTitleButton(hwnd, 1, iMinimizeState = 0);
             }
+        }
+        if (GetCapture() == hwnd && PtInRect(&rcDrag, ptMouseDownPos))
+        {
+            // drag window
+            POINT pt;
+            GetCursorPos(&pt);
+            MoveWindow(hwnd, pt.x - ptMouseDownPos.x, pt.y - ptMouseDownPos.y, wndWidth, wndHeight, FALSE);
         }
         break;
     case WM_MOUSELEAVE:
@@ -248,7 +238,8 @@ LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
         PostQuitMessage(0);
         break;
     case WM_HOOKMOUSEPOS:
-        pMainWnd->UpdateInfo(hwnd, POINT{ (LONG)wParam, (LONG)lParam });
+        if (GetCapture() == NULL)
+            pMainWnd->UpdateInfo(hwnd, POINT{ (LONG)wParam, (LONG)lParam });
         break;
     default:
         return DefWindowProc(hwnd, uMsg, wParam, lParam);
@@ -261,7 +252,6 @@ LRESULT CMainWnd::LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam)
     switch (wParam) {
     case WM_MOUSEMOVE:
         if (LPMSLLHOOKSTRUCT lpMM = reinterpret_cast<LPMSLLHOOKSTRUCT>(lParam))
-            //TODO: сделать Post, но выключать хук на время перетаскивания главного окна
             PostMessage(g_hWindow, WM_HOOKMOUSEPOS, lpMM->pt.x, lpMM->pt.y);
             //SendMessage(g_hWindow, WM_HOOKMOUSEPOS, lpMM->pt.x, lpMM->pt.y);
         break;
