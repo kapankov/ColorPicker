@@ -39,15 +39,14 @@ class CMagnifierWnd
 	HWND m_hwnd;
 	HDC m_hdc;
 	HPEN m_hSamplePen;
-	static LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+	static LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 	static BOOL CALLBACK DisplayMonitorCallback(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM  dwData);
 
+	void OnCreate(HWND hWnd);
+	void OnPaint();
 public:
 	CMagnifierWnd(HINSTANCE hInstance, HWND hwndParent, const RECT& rect);
 	~CMagnifierWnd();
 
 	void UpdateView(const POINT& pt);
-
-	void OnPaint();
-
 };

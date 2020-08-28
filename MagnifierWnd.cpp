@@ -3,21 +3,22 @@
 
 constexpr TCHAR szWndClassName[] = TEXT("MagnifierWnd");
 
-LRESULT CMagnifierWnd::WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+LRESULT CMagnifierWnd::WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-    CMagnifierWnd* pWnd = reinterpret_cast<CMagnifierWnd*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+    CMagnifierWnd* pWnd = reinterpret_cast<CMagnifierWnd*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
     switch (uMsg)
     {
     case WM_CREATE:
         pWnd = reinterpret_cast<CMagnifierWnd*>(reinterpret_cast<LPCREATESTRUCT>(lParam)->lpCreateParams);
-        pWnd->m_hdc = GetDC(hwnd);
-        SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)pWnd);
+        SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)pWnd);
+        if (pWnd)
+            pWnd->OnCreate(hWnd);
         break;
     case WM_PAINT:
         pWnd->OnPaint();
         break;
     default:
-        return DefWindowProc(hwnd, uMsg, wParam, lParam);
+        return DefWindowProc(hWnd, uMsg, wParam, lParam);
     }
     return 0;
 }
@@ -90,6 +91,11 @@ void CMagnifierWnd::UpdateView(const POINT& pt)
 {
     m_ptLast = pt;
     RedrawWindow(m_hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+}
+
+void CMagnifierWnd::OnCreate(HWND hWnd)
+{
+    m_hdc = GetDC(hWnd);
 }
 
 void CMagnifierWnd::OnPaint()

@@ -39,70 +39,29 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
     return (INT_PTR)FALSE;
 }
 
-LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+LRESULT CMainWnd::MainWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-    static int iCloseState = 0; // 0-normal, 1-hover, -1-pushed
-    static int iMinimizeState = 0;
-    
     static POINT ptMouseDownPos = { -1, -1 };
     static TRACKMOUSEEVENT tme = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, nullptr, 0 };
-    static HHOOK mouseHook = nullptr;
 
-    CMainWnd* pMainWnd = reinterpret_cast<CMainWnd*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+    CMainWnd* pMainWnd = reinterpret_cast<CMainWnd*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
 
     switch (uMsg)
     {
     case WM_CREATE:
         pMainWnd = reinterpret_cast<CMainWnd*>(reinterpret_cast<LPCREATESTRUCT>(lParam)->lpCreateParams);
-        SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)pMainWnd);
-        if (HDC dc = GetWindowDC(hwnd))
-        {
-            pMainWnd->m_hMainFont = CreateFont(-MulDiv(9, GetDeviceCaps(dc, LOGPIXELSY), 72), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, L"Segoe UI");
-            ReleaseDC(hwnd, dc);
-        }
-        pMainWnd->m_hBmpClose = LoadBitmap(pMainWnd->m_hInst, MAKEINTRESOURCE(IDB_CLOSE));
-        pMainWnd->m_hBmpMinimize = LoadBitmap(pMainWnd->m_hInst, MAKEINTRESOURCE(IDB_MINIMIZE));
-        pMainWnd->m_brClient = CreateSolidBrush(RGB(0x66, 0x66, 0x66));
-        pMainWnd->m_brCaption = CreateSolidBrush(RGB(45, 45, 48));
-        // title button tooltips
-        {
-            HWND hwndTT = CreateWindowEx(WS_EX_TOPMOST, TOOLTIPS_CLASS, NULL,
-                WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
-                CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-                hwnd, NULL, pMainWnd->m_hInst, NULL);
-
-            SetWindowPos(hwndTT, HWND_TOPMOST, 0, 0, 0, 0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-
-            // Set up "tool" information.
-            // Don't use sizeof(TOOLINFO), because there some problem with Common-Controls and manifest
-            TOOLINFO ti = { TTTOOLINFO_V1_SIZE };
-            ti.uFlags = TTF_SUBCLASS;
-            ti.hwnd = hwnd;
-            ti.hinst = pMainWnd->m_hInst;
-            ti.lpszText = const_cast<LPTSTR>(TEXT("Close"));
-            ti.rect = rcClose;
-            SendMessage(hwndTT, TTM_ADDTOOL, 0, (LPARAM)(LPTOOLINFO)&ti);
-
-            ti.lpszText = const_cast<LPTSTR>(TEXT("Minimize"));
-            ti.rect = rcMinimize;
-            SendMessage(hwndTT, TTM_ADDTOOL, 0, (LPARAM)(LPTOOLINFO)&ti);
-        }
-        pMainWnd->m_wndMagnifier = std::make_unique<CMagnifierWnd>(pMainWnd->m_hInst, hwnd, RECT{ ctrlMargin, ctrlMargin + btnHeight, wndWidth - ctrlMargin, btnHeight + wndWidth - ctrlMargin });
-        // Update color info
-        pMainWnd->UpdateInfo(hwnd, POINT{ -1, -1 });
-        // hook
-        g_hWindow = hwnd;
-        mouseHook = SetWindowsHookEx(WH_MOUSE_LL, LowLevelMouseProc, GetModuleHandle(nullptr), 0);
+        SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)pMainWnd);
+        if (pMainWnd)
+            pMainWnd->OnCreate(hWnd);
         break;
     case WM_LBUTTONDOWN:
         ptMouseDownPos.x = LOWORD(lParam);
         ptMouseDownPos.y = HIWORD(lParam);
         if (PtInRect(&rcClose, ptMouseDownPos))
-            pMainWnd->DrawTitleButton(hwnd, 0, iCloseState = -1);
+            pMainWnd->DrawTitleButton(hWnd, 0, pMainWnd->m_iCloseState = -1);
         else if (PtInRect(&rcMinimize, ptMouseDownPos))
-            pMainWnd->DrawTitleButton(hwnd, 1, iMinimizeState = -1);
-        SetCapture(hwnd);
+            pMainWnd->DrawTitleButton(hWnd, 1, pMainWnd->m_iMinimizeState = -1);
+        SetCapture(hWnd);
         break;
     case WM_LBUTTONUP:
         ReleaseCapture();
@@ -111,11 +70,11 @@ LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
         {
             // если mouse up произошел на кнопке close
             if (PtInRect(&rcClose, POINT{ LOWORD(lParam), HIWORD(lParam) }))
-                DestroyWindow(hwnd);
+                DestroyWindow(hWnd);
             else
             {
                 // иначе, отпустим кнопку close
-                pMainWnd->DrawTitleButton(hwnd, 0, iCloseState = 0);
+                pMainWnd->DrawTitleButton(hWnd, 0, pMainWnd->m_iCloseState = 0);
             }
         }
         // если mouse down был на кнопке minimize
@@ -123,11 +82,11 @@ LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
         {
             // если mouse up произошел на кнопке minimize
             if (PtInRect(&rcMinimize, POINT{ LOWORD(lParam), HIWORD(lParam) }))
-                ShowWindow(hwnd, SW_MINIMIZE);
+                ShowWindow(hWnd, SW_MINIMIZE);
             else
             {
                 // иначе, отпустим кнопку minimize
-                pMainWnd->DrawTitleButton(hwnd, 1, iMinimizeState = 0);
+                pMainWnd->DrawTitleButton(hWnd, 1, pMainWnd->m_iMinimizeState = 0);
             }
         }
         ptMouseDownPos.x = -1;
@@ -136,47 +95,47 @@ LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
     case WM_MOUSEMOVE:
         if (tme.hwndTrack == nullptr)
         {
-            tme.hwndTrack = hwnd;
+            tme.hwndTrack = hWnd;
             TrackMouseEvent(&tme);
         }
-        if (iCloseState != -1 && iMinimizeState != -1)
+        if (pMainWnd->m_iCloseState != -1 && pMainWnd->m_iMinimizeState != -1)
         {
             if (PtInRect(&rcClose, POINT{ LOWORD(lParam), HIWORD(lParam) }))
             {
-                if (iCloseState != 1)
-                    pMainWnd->DrawTitleButton(hwnd, 0, iCloseState = 1);
+                if (pMainWnd->m_iCloseState != 1)
+                    pMainWnd->DrawTitleButton(hWnd, 0, pMainWnd->m_iCloseState = 1);
             }
             else
             {
-                if (iCloseState != 0)
-                    pMainWnd->DrawTitleButton(hwnd, 0, iCloseState = 0);
+                if (pMainWnd->m_iCloseState != 0)
+                    pMainWnd->DrawTitleButton(hWnd, 0, pMainWnd->m_iCloseState = 0);
             }
             if (PtInRect(&rcMinimize, POINT{ LOWORD(lParam), HIWORD(lParam) }))
             {
-                if (iMinimizeState != 1)
-                    pMainWnd->DrawTitleButton(hwnd, 1, iMinimizeState = 1);
+                if (pMainWnd->m_iMinimizeState != 1)
+                    pMainWnd->DrawTitleButton(hWnd, 1, pMainWnd->m_iMinimizeState = 1);
             }
             else
             {
-                if (iMinimizeState != 0)
-                    pMainWnd->DrawTitleButton(hwnd, 1, iMinimizeState = 0);
+                if (pMainWnd->m_iMinimizeState != 0)
+                    pMainWnd->DrawTitleButton(hWnd, 1, pMainWnd->m_iMinimizeState = 0);
             }
         }
-        if (GetCapture() == hwnd && PtInRect(&rcDrag, ptMouseDownPos))
+        if (GetCapture() == hWnd && PtInRect(&rcDrag, ptMouseDownPos))
         {
             // drag window
             POINT pt;
             GetCursorPos(&pt);
-            MoveWindow(hwnd, pt.x - ptMouseDownPos.x, pt.y - ptMouseDownPos.y, wndWidth, wndHeight, FALSE);
+            MoveWindow(hWnd, pt.x - ptMouseDownPos.x, pt.y - ptMouseDownPos.y, wndWidth, wndHeight, FALSE);
         }
         break;
     case WM_MOUSELEAVE:
         tme.hwndTrack = nullptr;
         //  reset title buttons state
-        if (iCloseState != 0)
-            pMainWnd->DrawTitleButton(hwnd, 0, iCloseState = 0);
-        if (iMinimizeState != 0)
-            pMainWnd->DrawTitleButton(hwnd, 1, iMinimizeState = 0);
+        if (pMainWnd->m_iCloseState != 0)
+            pMainWnd->DrawTitleButton(hWnd, 0, pMainWnd->m_iCloseState = 0);
+        if (pMainWnd->m_iMinimizeState != 0)
+            pMainWnd->DrawTitleButton(hWnd, 1, pMainWnd->m_iMinimizeState = 0);
         break;
 /*    case WM_COMMAND:
     {
@@ -188,61 +147,25 @@ LRESULT CMainWnd::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
             DialogBox(pMainWnd->m_hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hwnd, About);
             break;
         default:
-            return DefWindowProc(hwnd, uMsg, wParam, lParam);
+            return DefWindowProc(hWnd, uMsg, wParam, lParam);
         }
     }
     break;*/
     case WM_PAINT:
-    {
-        PAINTSTRUCT ps;
-        HDC hdc = BeginPaint(hwnd, &ps);
-        // draw caption
-        RECT rect;
-        GetWindowRect(hwnd, &rect);
-        OffsetRect(&rect, -rect.left, -rect.top);
-        FillRect(hdc, &rect, pMainWnd->m_brCaption);
-        // draw close button
-        pMainWnd->DrawTitleButton(hdc, 0, iCloseState);
-        // draw minimize button
-        pMainWnd->DrawTitleButton(hdc, 1, iMinimizeState);
-        // draw caption text
-        HGDIOBJ fntOld = SelectObject(hdc, pMainWnd->m_hMainFont);
-        SetTextColor(hdc, RGB(255, 255, 255));
-        SetBkMode(hdc, TRANSPARENT);
-        TEXTMETRIC tm;
-        GetTextMetrics(hdc, &tm);
-        TextOut(hdc, 4, (btnHeight - tm.tmHeight) / 2 + 2, pMainWnd->m_szTitle, static_cast<int>(lstrlen(pMainWnd->m_szTitle)));
-        SelectObject(hdc, fntOld);
-
-        // draw client
-        GetClientRect(hwnd, &rect);
-        InflateRect(&rect, -1, -1);
-        rect.top += 24;
-        FillRect(hdc, &rect, pMainWnd->m_brClient);
-        //TODO: put monitors info (amount, current monitor, current profile
-
-        // Update color info
-        pMainWnd->UpdateInfo(hwnd, POINT{ -1, -1 });
-
-        EndPaint(hwnd, &ps);
-    }
-    break;
+        if (pMainWnd)
+            pMainWnd->OnPaint();
+        break;
     case WM_DESTROY:
-        UnhookWindowsHookEx(mouseHook);
-        pMainWnd->m_wndMagnifier.reset();
-        DeleteObject(pMainWnd->m_hBmpClose);
-        DeleteObject(pMainWnd->m_hBmpMinimize);
-        DeleteObject(pMainWnd->m_hMainFont);
-        DeleteObject(pMainWnd->m_brClient);
-        DeleteObject(pMainWnd->m_brCaption);
+        if (pMainWnd)
+            pMainWnd->OnDestroy();
         PostQuitMessage(0);
         break;
     case WM_HOOKMOUSEPOS:
         if (GetCapture() == NULL)
-            pMainWnd->UpdateInfo(hwnd, POINT{ (LONG)wParam, (LONG)lParam });
+            pMainWnd->UpdateInfo(hWnd, POINT{ (LONG)wParam, (LONG)lParam });
         break;
     default:
-        return DefWindowProc(hwnd, uMsg, wParam, lParam);
+        return DefWindowProc(hWnd, uMsg, wParam, lParam);
     }
     return 0;
 }
@@ -374,8 +297,100 @@ void CMainWnd::UpdateInfo(HWND hWnd, POINT&& pt)
     }
 }
 
+void CMainWnd::OnCreate(HWND hWnd)
+{
+    if (HDC dc = GetWindowDC(hWnd))
+    {
+        m_hMainFont = CreateFont(-MulDiv(9, GetDeviceCaps(dc, LOGPIXELSY), 72), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, L"Segoe UI");
+        ReleaseDC(hWnd, dc);
+    }
+    m_hBmpClose = LoadBitmap(m_hInst, MAKEINTRESOURCE(IDB_CLOSE));
+    m_hBmpMinimize = LoadBitmap(m_hInst, MAKEINTRESOURCE(IDB_MINIMIZE));
+    m_brClient = CreateSolidBrush(RGB(0x66, 0x66, 0x66));
+    m_brCaption = CreateSolidBrush(RGB(45, 45, 48));
+    // title button tooltips
+    {
+        //TODO: Leaks?
+        HWND hwndTT = CreateWindowEx(WS_EX_TOPMOST, TOOLTIPS_CLASS, NULL,
+            WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
+            CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+            hWnd, NULL, m_hInst, NULL);
+
+        SetWindowPos(hwndTT, HWND_TOPMOST, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+
+        // Set up "tool" information.
+        // Don't use sizeof(TOOLINFO), because there some problem with Common-Controls and manifest
+        TOOLINFO ti = { TTTOOLINFO_V1_SIZE };
+        ti.uFlags = TTF_SUBCLASS;
+        ti.hwnd = hWnd;
+        ti.hinst = m_hInst;
+        ti.lpszText = const_cast<LPTSTR>(TEXT("Close"));
+        ti.rect = rcClose;
+        SendMessage(hwndTT, TTM_ADDTOOL, 0, (LPARAM)(LPTOOLINFO)&ti);
+
+        ti.lpszText = const_cast<LPTSTR>(TEXT("Minimize"));
+        ti.rect = rcMinimize;
+        SendMessage(hwndTT, TTM_ADDTOOL, 0, (LPARAM)(LPTOOLINFO)&ti);
+    }
+    m_wndMagnifier = std::make_unique<CMagnifierWnd>(m_hInst, hWnd, RECT{ ctrlMargin, ctrlMargin + btnHeight, wndWidth - ctrlMargin, btnHeight + wndWidth - ctrlMargin });
+    // Update color info
+    UpdateInfo(hWnd, POINT{ -1, -1 });
+    // hook
+    g_hWindow = hWnd;
+    m_mouseHook = SetWindowsHookEx(WH_MOUSE_LL, LowLevelMouseProc, GetModuleHandle(nullptr), 0);
+}
+
+void CMainWnd::OnDestroy()
+{
+    UnhookWindowsHookEx(m_mouseHook);
+    m_wndMagnifier.reset();
+    DeleteObject(m_hBmpClose);
+    DeleteObject(m_hBmpMinimize);
+    DeleteObject(m_hMainFont);
+    DeleteObject(m_brClient);
+    DeleteObject(m_brCaption);
+}
+
+void CMainWnd::OnPaint()
+{
+    PAINTSTRUCT ps;
+    HDC hdc = BeginPaint(m_hWindow, &ps);
+    // draw caption
+    RECT rect;
+    GetWindowRect(m_hWindow, &rect);
+    OffsetRect(&rect, -rect.left, -rect.top);
+    FillRect(hdc, &rect, m_brCaption);
+    // draw close button
+    DrawTitleButton(hdc, 0, m_iCloseState);
+    // draw minimize button
+    DrawTitleButton(hdc, 1, m_iMinimizeState);
+    // draw caption text
+    HGDIOBJ fntOld = SelectObject(hdc, m_hMainFont);
+    SetTextColor(hdc, RGB(255, 255, 255));
+    SetBkMode(hdc, TRANSPARENT);
+    TEXTMETRIC tm;
+    GetTextMetrics(hdc, &tm);
+    TextOut(hdc, 4, (btnHeight - tm.tmHeight) / 2 + 2, m_szTitle, static_cast<int>(lstrlen(m_szTitle)));
+    SelectObject(hdc, fntOld);
+
+    // draw client
+    GetClientRect(m_hWindow, &rect);
+    InflateRect(&rect, -1, -1);
+    rect.top += 24;
+    FillRect(hdc, &rect, m_brClient);
+    //TODO: put monitors info (amount, current monitor, current profile
+
+    // Update color info
+    UpdateInfo(m_hWindow, POINT{ -1, -1 });
+
+    EndPaint(m_hWindow, &ps);
+}
+
 CMainWnd::CMainWnd(HINSTANCE hInstance)
-    : m_hMainFont(nullptr)
+    : m_hMainFont(nullptr),
+    m_iCloseState(0),
+    m_iMinimizeState(0)
 {
     // Initialize strings
     LoadString(hInstance, IDS_APP_TITLE, m_szTitle, MAX_LOADSTRING);

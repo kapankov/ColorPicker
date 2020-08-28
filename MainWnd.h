@@ -18,15 +18,20 @@ class CMainWnd
 	// Caption buttons bitmap
 	HBITMAP m_hBmpClose;
 	HBITMAP m_hBmpMinimize;
+	// Caption button states
+	int m_iCloseState; // 0-normal, 1-hover, -1-pushed
+	int m_iMinimizeState;
+
 	// Font
 	HFONT m_hMainFont;
 
-	CScreenPixel m_ScreenPixel;
+	HHOOK m_mouseHook;
 
+	CScreenPixel m_ScreenPixel;
 
 	std::unique_ptr<CMagnifierWnd> m_wndMagnifier;
 
-	static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+	static LRESULT CALLBACK MainWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 	static LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam);
 
 	ATOM InternalRegisterClass(HINSTANCE hInstance);
@@ -35,6 +40,9 @@ class CMainWnd
 	void DrawTitleButton(HWND hwnd, int ibtn, int state);
 
 	void UpdateInfo(HWND hWnd, POINT&& pt);
+	void OnCreate(HWND hWnd);
+	void OnDestroy();
+	void OnPaint();
 public:
 	CMainWnd(HINSTANCE hInstance);
 
