@@ -4,6 +4,12 @@
 #include "framework.h"
 #include "XTransparentBlt.h"
 
+#ifndef _UNICODE
+#define lsprintf sprintf
+#else
+#define lsprintf swprintf
+#endif
+
 constexpr LONG wndWidth = 240;
 constexpr LONG wndHeight = 400;
 constexpr LONG btnWidth = 24;
@@ -162,7 +168,7 @@ LRESULT CMainWnd::MainWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam
         break;
     case WM_HOOKMOUSEPOS:
         if (GetCapture() == NULL)
-            pMainWnd->UpdateInfo(hWnd, POINT{ (LONG)wParam, (LONG)lParam });
+            pMainWnd->UpdateInfo();
         break;
     default:
         return DefWindowProc(hWnd, uMsg, wParam, lParam);
@@ -254,69 +260,83 @@ void CMainWnd::DrawTitleButton(HWND hwnd, int ibtn, int state)
     }
 }
 
-void CMainWnd::UpdateInfo(HWND hWnd, POINT&& pt)
+void CMainWnd::UpdateInfo()
 {
-    constexpr TCHAR clrFormat[] = _TEXT("Pos: x=%li, y=%li\nRed: %li, Green: %li, Blue: %li\nL: %.2f, a: %.2f, b: %.2f\n"
-        "Hue: %.0f,\n"
-        "Saturation: %.2f\n"
-        "Brightness: %.2f\n"
-        "Lightness: %.2f\n"
-        "Luminance: %.2f");
-    if (pt.x == -1 || pt.y == -1)
-        ::GetCursorPos(&pt);
-    if (HDC dc = GetDC(hWnd))
-    {
-        double lab[3] = { };
-        double hsvl[4] = { };
-        double lum = 0;
-        const COLORREF rgb = m_ScreenPixel.GetPixel(pt);
-        m_ScreenPixel.Rgb2Lab(rgb, lab);
-        m_ScreenPixel.GetHsvl(rgb, hsvl);
-        m_ScreenPixel.GetLuminance(rgb, &lum);
-        TCHAR szTxt[512] = _TEXT("");
-        swprintf(szTxt, sizeof(szTxt) / sizeof(TCHAR), clrFormat,
-            pt.x, pt.y,
-            GetRValue(rgb), GetGValue(rgb), GetBValue(rgb),
-            lab[0], lab[1], lab[2],
-            hsvl[0], hsvl[1], hsvl[2], hsvl[3], lum);
-        // Get text height
-        LONG lTopOfText = wndWidth + btnHeight/* + ctrlMargin*/;
-        RECT rc{ ctrlMargin, lTopOfText,  wndWidth - ctrlMargin * 2, lTopOfText + 1 };
-        DrawText(dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING | DT_CALCRECT);
-        // Clear
-        FillRect(dc, &rc, m_brClient);
-        // Draw text
-        HGDIOBJ fntOld = SelectObject(dc, m_hMainFont);
-        SetTextColor(dc, RGB(255, 255, 255));
-        SetBkMode(dc, TRANSPARENT);
-        DrawText(dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING);
-        SelectObject(dc, fntOld);
-        ReleaseDC(hWnd, dc);
+    POINT pt;
+    ::GetCursorPos(&pt);
+    double lab[3] = { };
+    double hsvl[4] = { };
+    double lum = 0;
+    const COLORREF rgb = m_ScreenPixel.GetPixel(pt);
+    m_ScreenPixel.Rgb2Lab(rgb, lab);
+    m_ScreenPixel.GetHsvl(rgb, hsvl);
+    m_ScreenPixel.GetLuminance(rgb, &lum);
+    TCHAR szTxt[512] = _TEXT("");
 
-        m_wndMagnifier->UpdateView(pt);
-    }
+    lsprintf(szTxt, sizeof(szTxt) / sizeof(TCHAR), TEXT("Pos: x=%li, y=%li"), pt.x, pt.y);
+
+    LONG lTopOfText = wndWidth + btnHeight/* + ctrlMargin*/;
+    RECT rc{ ctrlMargin, lTopOfText,  wndWidth - ctrlMargin * 2, wndHeight - ctrlMargin * 2 };
+    // Clear
+    FillRect(m_dc, &rc, m_brClient);
+    // Get text height
+    DrawText(m_dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING | DT_CALCRECT);
+    // Draw Pos text
+    DrawText(m_dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING);
+
+    rc.top = rc.bottom++;
+    lsprintf(szTxt, sizeof(szTxt) / sizeof(TCHAR), TEXT("R: %li\nG: %li\nB: %li"),
+        GetRValue(rgb), GetGValue(rgb), GetBValue(rgb));
+    DrawText(m_dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING | DT_CALCRECT);
+    // Draw RGB text
+    DrawText(m_dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING);
+
+    rc.left += (wndWidth - ctrlMargin * 2) / 3;
+    lsprintf(szTxt, sizeof(szTxt) / sizeof(TCHAR), TEXT("L: %.2f\na: %.2f\nb: %.2f"),
+        lab[0], lab[1], lab[2]);
+    DrawText(m_dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING | DT_CALCRECT);
+    // Draw Lab text
+    DrawText(m_dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING);
+
+    rc.left += (wndWidth - ctrlMargin * 2) / 3;
+    lsprintf(szTxt, sizeof(szTxt) / sizeof(TCHAR), TEXT("H: %.0f\nS: %.2f\nB: %.2f"),
+        hsvl[0], hsvl[1], hsvl[2]);
+    DrawText(m_dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING | DT_CALCRECT);
+    // Draw HSB text
+    DrawText(m_dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING);
+
+    rc.top = rc.bottom++;
+    rc.left = ctrlMargin;
+    lsprintf(szTxt, sizeof(szTxt) / sizeof(TCHAR), TEXT("Lightness: %.2f\nLuminance: %.2f\nWeb RGB: #%2X%2X%2X"), 
+        hsvl[3], lum, GetRValue(rgb), GetGValue(rgb), GetBValue(rgb));
+    DrawText(m_dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING | DT_CALCRECT);
+    // Draw other text
+    DrawText(m_dc, szTxt, lstrlen(szTxt), &rc, DT_LEFT | DT_EXTERNALLEADING);
+
+
+    m_wndMagnifier->UpdateView(pt);
 }
 
 void CMainWnd::OnCreate(HWND hWnd)
 {
-    if (HDC dc = GetWindowDC(hWnd))
-    {
-        m_hMainFont = CreateFont(-MulDiv(9, GetDeviceCaps(dc, LOGPIXELSY), 72), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, L"Segoe UI");
-        ReleaseDC(hWnd, dc);
-    }
+    m_dc = GetDC(hWnd);
+    m_hMainFont = CreateFont(-MulDiv(9, GetDeviceCaps(m_dc, LOGPIXELSY), 72), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, L"Segoe UI");
+    m_fntOld = SelectObject(m_dc, m_hMainFont);
+    SetTextColor(m_dc, RGB(255, 255, 255));
+    SetBkMode(m_dc, TRANSPARENT);
+
     m_hBmpClose = LoadBitmap(m_hInst, MAKEINTRESOURCE(IDB_CLOSE));
     m_hBmpMinimize = LoadBitmap(m_hInst, MAKEINTRESOURCE(IDB_MINIMIZE));
     m_brClient = CreateSolidBrush(RGB(0x66, 0x66, 0x66));
     m_brCaption = CreateSolidBrush(RGB(45, 45, 48));
     // title button tooltips
     {
-        //TODO: Leaks?
-        HWND hwndTT = CreateWindowEx(WS_EX_TOPMOST, TOOLTIPS_CLASS, NULL,
+        m_hwndTT = CreateWindowEx(WS_EX_TOPMOST, TOOLTIPS_CLASS, NULL,
             WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
             CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
             hWnd, NULL, m_hInst, NULL);
 
-        SetWindowPos(hwndTT, HWND_TOPMOST, 0, 0, 0, 0,
+        SetWindowPos(m_hwndTT, HWND_TOPMOST, 0, 0, 0, 0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 
         // Set up "tool" information.
@@ -327,15 +347,15 @@ void CMainWnd::OnCreate(HWND hWnd)
         ti.hinst = m_hInst;
         ti.lpszText = const_cast<LPTSTR>(TEXT("Close"));
         ti.rect = rcClose;
-        SendMessage(hwndTT, TTM_ADDTOOL, 0, (LPARAM)(LPTOOLINFO)&ti);
+        SendMessage(m_hwndTT, TTM_ADDTOOL, 0, (LPARAM)(LPTOOLINFO)&ti);
 
         ti.lpszText = const_cast<LPTSTR>(TEXT("Minimize"));
         ti.rect = rcMinimize;
-        SendMessage(hwndTT, TTM_ADDTOOL, 0, (LPARAM)(LPTOOLINFO)&ti);
+        SendMessage(m_hwndTT, TTM_ADDTOOL, 0, (LPARAM)(LPTOOLINFO)&ti);
     }
     m_wndMagnifier = std::make_unique<CMagnifierWnd>(m_hInst, hWnd, RECT{ ctrlMargin, ctrlMargin + btnHeight, wndWidth - ctrlMargin, btnHeight + wndWidth - ctrlMargin });
     // Update color info
-    UpdateInfo(hWnd, POINT{ -1, -1 });
+    UpdateInfo();
     // hook
     g_hWindow = hWnd;
     m_mouseHook = SetWindowsHookEx(WH_MOUSE_LL, LowLevelMouseProc, GetModuleHandle(nullptr), 0);
@@ -345,11 +365,14 @@ void CMainWnd::OnDestroy()
 {
     UnhookWindowsHookEx(m_mouseHook);
     m_wndMagnifier.reset();
+    SelectObject(m_dc, m_fntOld);
     DeleteObject(m_hBmpClose);
     DeleteObject(m_hBmpMinimize);
     DeleteObject(m_hMainFont);
     DeleteObject(m_brClient);
     DeleteObject(m_brCaption);
+    ReleaseDC(m_hWindow, m_dc);
+    DestroyWindow(m_hwndTT);
 }
 
 void CMainWnd::OnPaint()
@@ -382,24 +405,20 @@ void CMainWnd::OnPaint()
     //TODO: put monitors info (amount, current monitor, current profile
 
     // Update color info
-    UpdateInfo(m_hWindow, POINT{ -1, -1 });
+    UpdateInfo();
 
     EndPaint(m_hWindow, &ps);
 }
 
 CMainWnd::CMainWnd(HINSTANCE hInstance)
-    : m_hMainFont(nullptr),
+    : m_dc(nullptr),
+    m_hMainFont(nullptr),
     m_iCloseState(0),
     m_iMinimizeState(0)
 {
     // Initialize strings
     LoadString(hInstance, IDS_APP_TITLE, m_szTitle, MAX_LOADSTRING);
-#ifndef _UNICODE
-    sprintf
-#else
-    swprintf
-#endif
-        (&m_szTitle[lstrlen(m_szTitle)], sizeof(m_szTitle) / sizeof(TCHAR) - lstrlen(m_szTitle), _TEXT(" ver. %li.%li.%li.%li"), MAJOR_VER, MINOR_VER, RELEASE_VER, BUILD_VER);
+    lsprintf(&m_szTitle[lstrlen(m_szTitle)], sizeof(m_szTitle) / sizeof(TCHAR) - lstrlen(m_szTitle), _TEXT(" ver. %li.%li.%li.%li"), MAJOR_VER, MINOR_VER, RELEASE_VER, BUILD_VER);
     LoadString(hInstance, IDC_COLORPICKER, m_szWindowClass, MAX_LOADSTRING);
 
     InternalRegisterClass(hInstance);
@@ -412,7 +431,7 @@ CMainWnd::CMainWnd(HINSTANCE hInstance)
     m_hWindow = CreateWindowW(m_szWindowClass, m_szTitle, 0,
         (r.right - r.left - wndWidth) / 2, (r.bottom - r.top - wndHeight) / 2, wndWidth, wndHeight,
         nullptr, nullptr, hInstance, this);
-
+    
     if (!m_hWindow)
         throw 0;
 }

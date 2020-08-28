@@ -12,6 +12,7 @@ class CMainWnd
 	HWND m_hWindow;
 	TCHAR m_szTitle[MAX_LOADSTRING];
 	TCHAR m_szWindowClass[MAX_LOADSTRING];
+	HDC m_dc;
 	// Brushes
 	HBRUSH m_brClient;
 	HBRUSH m_brCaption;
@@ -21,9 +22,11 @@ class CMainWnd
 	// Caption button states
 	int m_iCloseState; // 0-normal, 1-hover, -1-pushed
 	int m_iMinimizeState;
-
+	// Tooltips
+	HWND m_hwndTT;
 	// Font
 	HFONT m_hMainFont;
+	HGDIOBJ m_fntOld;
 
 	HHOOK m_mouseHook;
 
@@ -39,7 +42,7 @@ class CMainWnd
 	void DrawTitleButton(HDC dc, int ibtn, int state);
 	void DrawTitleButton(HWND hwnd, int ibtn, int state);
 
-	void UpdateInfo(HWND hWnd, POINT&& pt);
+	void UpdateInfo();
 	void OnCreate(HWND hWnd);
 	void OnDestroy();
 	void OnPaint();
