@@ -29,6 +29,7 @@ CMagnifierWnd::CMagnifierWnd(HINSTANCE hInstance, HWND hwndParent, const RECT& r
     m_hdc(nullptr),
     m_ptLast{ 0, 0 }
 {
+    m_hSamplePen = ::CreatePen(PS_SOLID, 0, RGB(255, 0, 0));
     // fill monitors info
     EnumDisplayMonitors(NULL, NULL, DisplayMonitorCallback, (LPARAM)this);
 
@@ -66,8 +67,13 @@ CMagnifierWnd::~CMagnifierWnd()
         {
             if (mi.objOld)
                 ::SelectObject(mi.dcMem, mi.objOld);
+            if (mi.hOldPen)
+                ::SelectObject(mi.dcMem, mi.hOldPen);
+            if (mi.hOldBrush)
+                ::SelectObject(mi.dcMem, mi.hOldBrush);
             ::DeleteObject(mi.hbmpScr);
             ::DeleteDC(mi.dcMem);
+
         }
         ::DeleteDC(mi.dcMonitor);
         if (mi.hTransform) cmsDeleteTransform(mi.hTransform);
@@ -76,6 +82,7 @@ CMagnifierWnd::~CMagnifierWnd()
     }
     m_lstMonitors.clear();
     if (m_hdc) ReleaseDC(m_hwnd, m_hdc);
+    DeleteObject(m_hSamplePen);
     ::DestroyWindow(m_hwnd);
 }
 
@@ -93,17 +100,29 @@ void CMagnifierWnd::OnPaint()
         {
             int w = m_Rect.right - m_Rect.left;
             int h = m_Rect.bottom - m_Rect.top;
-            const int zoom = 4;
 
             // позиционировать курсор по центру
-            int x = m_ptLast.x - mi.rcMonitor.left - w / (zoom<<1);
-            int y = m_ptLast.y - mi.rcMonitor.top - h / (zoom<<1);
+            int x = m_ptLast.x - mi.rcMonitor.left - w / (m_zoom<<1);
+            int y = m_ptLast.y - mi.rcMonitor.top - h / (m_zoom<<1);
             if (x < 0) x = 0;
             if (y < 0) y = 0;
-            if (x + w / zoom > (mi.rcMonitor.right - mi.rcMonitor.left)) x = (mi.rcMonitor.right - mi.rcMonitor.left) - w / zoom;
-            if (y + h / zoom > (mi.rcMonitor.bottom - mi.rcMonitor.top)) y = (mi.rcMonitor.bottom - mi.rcMonitor.top) - h / zoom;
-            ::StretchBlt(mi.dcMem, 0, 0, w, h, mi.dcMonitor, x, y, w/zoom, h/zoom, SRCCOPY);
-            //TODO: draw sample
+            if (x + w / m_zoom > (mi.rcMonitor.right - mi.rcMonitor.left)) x = (mi.rcMonitor.right - mi.rcMonitor.left) - w / m_zoom;
+            if (y + h / m_zoom > (mi.rcMonitor.bottom - mi.rcMonitor.top)) y = (mi.rcMonitor.bottom - mi.rcMonitor.top) - h / m_zoom;
+            ::StretchBlt(mi.dcMem, 0, 0, w, h, mi.dcMonitor, x, y, w/m_zoom, h/m_zoom, SRCCOPY);
+            //draw sample
+            SIZE size = { 1, 1 };
+            RECT rcSample = { 
+                (m_ptLast.x - mi.rcMonitor.left - x) * m_zoom,
+                (m_ptLast.y - mi.rcMonitor.top - y) * m_zoom,
+                (m_ptLast.x - mi.rcMonitor.left - x + size.cx) * m_zoom,
+                (m_ptLast.y - mi.rcMonitor.top - y + size.cy) * m_zoom
+            };
+            if (rcSample.left > 0) rcSample.left--;
+            if (rcSample.top > 0) rcSample.top--;
+            if (rcSample.right < m_Rect.right) rcSample.right++;
+            if (rcSample.bottom < m_Rect.bottom) rcSample.bottom++;
+
+            Rectangle(mi.dcMem, rcSample.left, rcSample.top, rcSample.right, rcSample.bottom);
 
             // draw result
             if (m_hdc)
@@ -134,7 +153,8 @@ BOOL CMagnifierWnd::DisplayMonitorCallback(HMONITOR hMonitor, HDC hdcMonitor, LP
             if (mi.hbmpScr)
                 mi.objOld = ::SelectObject(mi.dcMem, mi.hbmpScr);
             else mi.objOld = nullptr;
-
+            mi.hOldPen = ::SelectObject(mi.dcMem, pWnd->m_hSamplePen);
+            mi.hOldBrush = ::SelectObject(mi.dcMem, GetStockObject(NULL_BRUSH));
 
             mi.szProfile = nullptr;
             DWORD dwSizeOfProfileName = 0;

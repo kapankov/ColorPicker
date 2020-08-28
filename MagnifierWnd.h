@@ -22,12 +22,15 @@ typedef struct _MONINFO
 	HDC dcMem;
 	HBITMAP hbmpScr;
 	HGDIOBJ objOld;
+	HGDIOBJ hOldPen;
+	HGDIOBJ hOldBrush;
 } MONINFO, * LPMONINFO;
 
 typedef std::vector<MONINFO> MONINFOLIST;
 
 class CMagnifierWnd
 {
+	const int m_zoom = 4;
 	RECT m_Rect;
 	POINT m_ptLast;
 
@@ -35,6 +38,7 @@ class CMagnifierWnd
 
 	HWND m_hwnd;
 	HDC m_hdc;
+	HPEN m_hSamplePen;
 	static LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 	static BOOL CALLBACK DisplayMonitorCallback(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM  dwData);
 
