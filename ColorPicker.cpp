@@ -41,6 +41,7 @@ THE SOFTWARE.
 
 #include "framework.h"
 #include "ColorPicker.h"
+#include "SingleInstance.h"
 #include "MainWnd.h"
 
 // Application entry point
@@ -52,6 +53,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
 
+    TCHAR szMutexName[MAX_LOADSTRING];
+    LoadString(hInstance, IDC_COLORPICKER, szMutexName, MAX_LOADSTRING);
+    HANDLE hMutex = InitInstance(szMutexName, TRUE);
+    if (!hMutex) return 0; // есть уже экземпляр
+
     std::unique_ptr<CMainWnd> wndMain = std::make_unique<CMainWnd>(hInstance);
-    return wndMain->Run(nCmdShow);
+    int res = wndMain->Run(nCmdShow);
+    CloseHandle(hMutex);
+    return res;
 }

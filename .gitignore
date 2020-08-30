@@ -339,3 +339,5 @@ ASALocalRun/
 # BeatPulse healthcheck temp database
 healthchecksdb
 /lcms2-2.11
+/Setup
+/setup64.iss

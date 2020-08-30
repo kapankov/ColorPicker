@@ -2,9 +2,9 @@
 #define APP_DEFINES_H
 
 #define MAJOR_VER        0
-#define MINOR_VER        1
-#define RELEASE_VER      2
-#define BUILD_VER        5
+#define MINOR_VER        2
+#define RELEASE_VER      0
+#define BUILD_VER        8
 #define APP_VER          MAJOR_VER,MINOR_VER,RELEASE_VER,BUILD_VER
 #define VER_STR_(VER)    #VER
 #define VER_STR(VER)     VER_STR_(VER) "\0"

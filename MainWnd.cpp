@@ -3,6 +3,7 @@
 #include "version.h"
 #include "framework.h"
 #include "XTransparentBlt.h"
+#include "SingleInstance.h"
 
 #ifndef _UNICODE
 #define lsprintf sprintf
@@ -166,6 +167,9 @@ LRESULT CMainWnd::MainWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam
             pMainWnd->OnDestroy();
         PostQuitMessage(0);
         break;
+    // поддержка запуска одного экземпл€ра приложени€
+    case UWM_ARE_YOU_ME: // отвечаем, что хотим активироватьс€ !!!
+        return UWM_ARE_YOU_ME;
     case WM_HOOKMOUSEPOS:
         if (GetCapture() == NULL)
             pMainWnd->UpdateInfo();
@@ -358,7 +362,6 @@ void CMainWnd::OnCreate(HWND hWnd)
     UpdateInfo();
     // hook
     g_hWindow = hWnd;
-    m_mouseHook = SetWindowsHookEx(WH_MOUSE_LL, LowLevelMouseProc, GetModuleHandle(nullptr), 0);
 }
 
 void CMainWnd::OnDestroy()
@@ -447,6 +450,8 @@ int CMainWnd::Run(int nCmdShow)
     HACCEL hAccelTable = LoadAccelerators(m_hInst, MAKEINTRESOURCE(IDC_COLORPICKER));
 
     MSG msg;
+
+    m_mouseHook = SetWindowsHookEx(WH_MOUSE_LL, LowLevelMouseProc, GetModuleHandle(nullptr), 0);
 
     // Main message loop:
     while (GetMessage(&msg, nullptr, 0, 0))
