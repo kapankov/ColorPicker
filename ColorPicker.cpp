@@ -55,11 +55,15 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
     TCHAR szMutexName[MAX_LOADSTRING];
     LoadString(hInstance, IDC_COLORPICKER, szMutexName, MAX_LOADSTRING);
-    HANDLE hMutex = InitInstance(szMutexName, TRUE);
-    if (!hMutex) return 0; // есть уже экземпляр
 
+    // Single instance support
+    HANDLE hMutex = InitInstance(szMutexName, TRUE);
+    if (!hMutex) return 0; // there is already a running instance
+
+    // Create and run main window
     std::unique_ptr<CMainWnd> wndMain = std::make_unique<CMainWnd>(hInstance);
     int res = wndMain->Run(nCmdShow);
+    // Close single instance mutex
     CloseHandle(hMutex);
     return res;
 }
