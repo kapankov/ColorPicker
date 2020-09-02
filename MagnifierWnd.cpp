@@ -144,7 +144,8 @@ BOOL CMagnifierWnd::DisplayMonitorCallback(HMONITOR hMonitor, HDC hdcMonitor, LP
     UNREFERENCED_PARAMETER(hdcMonitor);
 
     CMagnifierWnd* pWnd = reinterpret_cast<CMagnifierWnd*>(dwData);
-    MONITORINFOEX miex = { sizeof(MONITORINFOEX) };
+    MONITORINFOEX miex;
+    miex.cbSize = sizeof(MONITORINFOEX);
     if (GetMonitorInfo(hMonitor, &miex))
     {
         MONINFO mi;

@@ -168,6 +168,7 @@
   <ItemGroup>
     <ClInclude Include="ColorPicker.h" />
     <ClInclude Include="framework.h" />
+    <ClInclude Include="Hook.h" />
     <ClInclude Include="MagnifierWnd.h" />
     <ClInclude Include="MainWnd.h" />
     <ClInclude Include="Resource.h" />
@@ -179,6 +180,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ColorPicker.cpp" />
+    <ClCompile Include="Hook.cpp" />
     <ClCompile Include="MagnifierWnd.cpp" />
     <ClCompile Include="MainWnd.cpp" />
     <ClCompile Include="ScreenPixel.cpp" />

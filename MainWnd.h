@@ -28,14 +28,11 @@ class CMainWnd
 	HFONT m_hMainFont;
 	HGDIOBJ m_fntOld;
 
-	HHOOK m_mouseHook;
-
 	CScreenPixel m_ScreenPixel;
 
 	std::unique_ptr<CMagnifierWnd> m_wndMagnifier;
 
 	static LRESULT CALLBACK MainWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-	static LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam);
 
 	ATOM InternalRegisterClass(HINSTANCE hInstance);
 

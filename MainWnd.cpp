@@ -4,6 +4,7 @@
 #include "framework.h"
 #include "XTransparentBlt.h"
 #include "SingleInstance.h"
+#include "Hook.h"
 
 #ifndef _UNICODE
 #define lsprintf sprintf
@@ -22,9 +23,6 @@ constexpr RECT rcDrag = { 0, brdWidth, wndWidth - btnWidth * 2 - brdWidth - 2, b
 constexpr RECT rcMinimize = { wndWidth - btnWidth * 2 - brdWidth - 1, brdWidth, wndWidth - btnWidth - 1, btnHeight };
 constexpr RECT rcClose = { wndWidth - btnWidth - brdWidth, brdWidth, wndWidth - brdWidth, btnHeight };
 
-// Mouse hook
-#define WM_HOOKMOUSEPOS (WM_USER + 0x0001)
-HWND g_hWindow = nullptr;
 
 // Message handler for about box.
 INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
@@ -50,6 +48,7 @@ LRESULT CMainWnd::MainWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 {
     static POINT ptMouseDownPos = { -1, -1 };
     static TRACKMOUSEEVENT tme = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, nullptr, 0 };
+    static DWORD lastCtrlPressed = 0; // for keyboard hook
 
     CMainWnd* pMainWnd = reinterpret_cast<CMainWnd*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
 
@@ -174,22 +173,50 @@ LRESULT CMainWnd::MainWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam
         if (GetCapture() == NULL)
             pMainWnd->UpdateInfo();
         break;
+    case WM_HOOKKEYEVENT:
+        if (wParam == WM_KEYUP)
+        {
+            if ((((PKBDLLHOOKSTRUCT)lParam)->vkCode == VK_LCONTROL) || (((PKBDLLHOOKSTRUCT)lParam)->vkCode == VK_RCONTROL))
+            {
+                lastCtrlPressed = ((PKBDLLHOOKSTRUCT)lParam)->time;
+            }
+        }
+        else if (wParam == WM_KEYDOWN)
+        {
+            if ((((PKBDLLHOOKSTRUCT)lParam)->vkCode == VK_LCONTROL) || (((PKBDLLHOOKSTRUCT)lParam)->vkCode == VK_RCONTROL))
+            {
+/*                if (lastCtrlPressed && ((((PKBDLLHOOKSTRUCT)lParam)->time - lastCtrlPressed) < 400))
+                    OnSaveColor(0, wParam, lParam, f);*/
+                lastCtrlPressed = 0;
+            }
+
+            POINT pt;
+            GetCursorPos(&pt);
+            switch (((PKBDLLHOOKSTRUCT)lParam)->vkCode)
+            {
+            case VK_LEFT:
+                SetCursorPos(pt.x - 1, pt.y);
+                pMainWnd->UpdateInfo();
+                break;
+            case VK_UP:
+                SetCursorPos(pt.x, pt.y - 1);
+                pMainWnd->UpdateInfo();
+                break;
+            case VK_RIGHT:
+                SetCursorPos(pt.x + 1, pt.y);
+                pMainWnd->UpdateInfo();
+                break;
+            case VK_DOWN:
+                SetCursorPos(pt.x, pt.y + 1);
+                pMainWnd->UpdateInfo();
+                break;
+            }
+        }
+        break;
     default:
         return DefWindowProc(hWnd, uMsg, wParam, lParam);
     }
     return 0;
-}
-
-LRESULT CMainWnd::LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam)
-{
-    switch (wParam) {
-    case WM_MOUSEMOVE:
-        if (LPMSLLHOOKSTRUCT lpMM = reinterpret_cast<LPMSLLHOOKSTRUCT>(lParam))
-            PostMessage(g_hWindow, WM_HOOKMOUSEPOS, lpMM->pt.x, lpMM->pt.y);
-            //SendMessage(g_hWindow, WM_HOOKMOUSEPOS, lpMM->pt.x, lpMM->pt.y);
-        break;
-    }
-    return CallNextHookEx(nullptr, nCode, wParam, lParam);
 }
 
 ATOM CMainWnd::InternalRegisterClass(HINSTANCE hInstance)
@@ -361,12 +388,12 @@ void CMainWnd::OnCreate(HWND hWnd)
     // Update color info
     UpdateInfo();
     // hook
-    g_hWindow = hWnd;
+    SetHook(hWnd);
 }
 
 void CMainWnd::OnDestroy()
 {
-    UnhookWindowsHookEx(m_mouseHook);
+    UnHook();
     m_wndMagnifier.reset();
     SelectObject(m_dc, m_fntOld);
     DeleteObject(m_hBmpClose);
@@ -450,8 +477,6 @@ int CMainWnd::Run(int nCmdShow)
     HACCEL hAccelTable = LoadAccelerators(m_hInst, MAKEINTRESOURCE(IDC_COLORPICKER));
 
     MSG msg;
-
-    m_mouseHook = SetWindowsHookEx(WH_MOUSE_LL, LowLevelMouseProc, GetModuleHandle(nullptr), 0);
 
     // Main message loop:
     while (GetMessage(&msg, nullptr, 0, 0))
