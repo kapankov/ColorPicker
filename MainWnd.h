@@ -32,10 +32,18 @@ THE SOFTWARE.
 #pragma once
 
 #include <windows.h>
+#include <vector>
 #include "ScreenPixel.h"
 #include "MagnifierWnd.h"
 
 #define MAX_LOADSTRING 100
+
+struct CaptionButtonInfo
+{
+	HBITMAP m_bitmap;
+	int m_state;
+	RECT m_rect;
+};
 
 class CMainWnd
 {
@@ -47,12 +55,8 @@ class CMainWnd
 	// Brushes
 	HBRUSH m_brClient;
 	HBRUSH m_brCaption;
-	// Caption buttons bitmap
-	HBITMAP m_hBmpClose;
-	HBITMAP m_hBmpMinimize;
-	// Caption button states
-	int m_iCloseState; // 0-normal, 1-hover, -1-pushed
-	int m_iMinimizeState;
+	// Caption buttons
+	std::vector<CaptionButtonInfo> m_buttons;
 	// Tooltips
 	HWND m_hwndTT;
 	// Font
