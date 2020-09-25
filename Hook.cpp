@@ -11,8 +11,8 @@ LRESULT LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam)
     switch (wParam) {
     case WM_MOUSEMOVE:
         if (LPMSLLHOOKSTRUCT lpMM = reinterpret_cast<LPMSLLHOOKSTRUCT>(lParam))
-            PostMessage(g_hWindow, WM_HOOKMOUSEPOS, lpMM->pt.x, lpMM->pt.y);
-        //SendMessage(g_hWindow, WM_HOOKMOUSEPOS, lpMM->pt.x, lpMM->pt.y);
+            //PostMessage(g_hWindow, WM_HOOKMOUSEPOS, lpMM->pt.x, lpMM->pt.y);
+            SendMessage(g_hWindow, WM_HOOKMOUSEPOS, lpMM->pt.x, lpMM->pt.y);
         break;
     }
     return CallNextHookEx(nullptr, nCode, wParam, lParam);

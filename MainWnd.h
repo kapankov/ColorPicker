@@ -38,30 +38,32 @@ THE SOFTWARE.
 
 #define MAX_LOADSTRING 100
 
-struct CaptionButtonInfo
+struct TitleBarButtonInfo
 {
 	HBITMAP m_bitmap;
-	int m_state;
+	int m_state; // 0 - normal, -1 - pushed, 1 - hover, -2 - fixed
 	RECT m_rect;
 };
 
 class CMainWnd
 {
-	HINSTANCE m_hInst;
-	HWND m_hWindow;
+	HINSTANCE m_hInst{ nullptr };
+	HWND m_hWindow{ nullptr };
 	TCHAR m_szTitle[MAX_LOADSTRING];
 	TCHAR m_szWindowClass[MAX_LOADSTRING];
-	HDC m_dc;
+	HDC m_dc{ nullptr };
 	// Brushes
-	HBRUSH m_brClient;
-	HBRUSH m_brCaption;
-	// Caption buttons
-	std::vector<CaptionButtonInfo> m_buttons;
+	HBRUSH m_brClient{ nullptr };
+	HBRUSH m_brTitleBar{ nullptr };
+	// Title bar buttons
+	std::vector<TitleBarButtonInfo> m_buttons;
 	// Tooltips
-	HWND m_hwndTT;
+	HWND m_hwndTT{ nullptr };
+	TRACKMOUSEEVENT m_tme{ sizeof(TRACKMOUSEEVENT), TME_LEAVE, nullptr, 0 };
+	POINT m_ptMouseDownPos{ -1, -1 };
 	// Font
-	HFONT m_hMainFont;
-	HGDIOBJ m_fntOld;
+	HFONT m_hMainFont{ nullptr };
+	HGDIOBJ m_fntOld{ nullptr };
 
 	CScreenPixel m_ScreenPixel;
 
@@ -71,13 +73,18 @@ class CMainWnd
 
 	ATOM InternalRegisterClass(HINSTANCE hInstance);
 
-	void DrawTitleButton(HDC dc, int ibtn, int state);
-	void DrawTitleButton(HWND hwnd, int ibtn, int state);
+	void DrawTitleButton(HDC dc, size_t ibtn);
+	void DrawTitleButton(HWND hwnd, size_t ibtn);
 
 	void UpdateInfo();
 	void OnCreate(HWND hWnd);
 	void OnDestroy();
 	void OnPaint();
+	void OnMouseMove(WORD x, WORD y);
+	void OnMouseLeave();
+	void OnLButtonDown(WORD x, WORD y);
+	void OnLButtonUp(WORD x, WORD y);
+	void OnTitleButtonClick(int i);
 public:
 	CMainWnd(HINSTANCE hInstance);
 
